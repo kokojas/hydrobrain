@@ -237,6 +237,7 @@ th:first-child,td:first-child{text-align:left}
 .rain i{display:block;height:100%;background:var(--water);border-radius:6px}
 @media (max-width:520px){.rain{display:none}td{white-space:nowrap}th,td{padding:7px 5px}}
 .warn{overflow-wrap:anywhere;background:var(--sun-soft);color:var(--sun-ink);border-radius:14px 4px 14px 4px;padding:10px 14px;font-size:14.5px;margin:10px 0}
+.source-errors{max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin-top:8px;font-size:12px;line-height:1.5}
 .note{background:var(--leaf-soft);border-radius:18px 5px 18px 5px;padding:12px 16px;margin:12px 0;font-size:15px}
 .note h3{margin:0 0 4px;color:var(--leaf);font-style:normal;font-weight:600;font-size:16.5px}
 .note .step{margin-top:8px}
@@ -613,11 +614,22 @@ async function openField(fid){
   ];
   $("#fSub").innerHTML=facts.filter(f=>f[1]!=null&&f[1]!=="").map(([k,v])=>`<li class="num">${k?`<span>${esc(k)}</span> `:""}${esc(v)}</li>`).join("");
   const warnings = info.warnings || [];
-  const summaries = warnings.map(w => w.startsWith("Геологія: геологічні сервіси не дали опису породи")
-    ? "Геологічні сервіси недоступні. Використано довідниковий тип породи; його можна уточнити в режимі експерта."
-    : w);
+  const hasSoilFallback = warnings.some(w => w.startsWith("Тип ґрунту не визначено автоматично"));
+  const summaries = [...new Set(warnings.flatMap(w => {
+    if(w.startsWith("Геологія:"))
+      return ["Геологічні сервіси недоступні. Використано довідниковий тип породи; його можна уточнити в режимі експерта."];
+    if(w.startsWith("SoilGrids недоступний"))
+      return hasSoilFallback ? [] : ["Не вдалося перевірити ґрунтові дані онлайн. Для розрахунку використано задані параметри поля."];
+    if(w.startsWith("Тип ґрунту не визначено автоматично"))
+      return ["Не вдалося визначити ґрунт автоматично. Для розрахунку використано чорнозем типовий. Для точності оберіть фактичний тип ґрунту під час створення поля."];
+    if(w.startsWith("Рельєф (DEM) недоступний"))
+      return ["Не вдалося отримати дані рельєфу онлайн. Перевірте висоту й ухил у режимі експерта."];
+    if(/HTTPS?ConnectionPool|ProxyError|Max retries exceeded|Tunnel connection failed|Traceback|https?:\/\//i.test(w))
+      return ["Частина зовнішніх даних недоступна. Перевірте параметри поля перед використанням рекомендації."];
+    return [w];
+  }))];
   $("#fWarn").innerHTML=warnings.length?`<div class="warn">${summaries.map(esc).join("<br>")}
-    ${summaries.some((s,i)=>s!==warnings[i])?`<details class="tech"><summary>Деталі джерел даних</summary>${warnings.map(esc).join("<br>")}</details>`:""}</div>`:"";
+    ${summaries.length!==warnings.length || summaries.some((s,i)=>s!==warnings[i])?`<details class="tech"><summary>Деталі джерел даних</summary><div class="source-errors">${warnings.map(esc).join("\n\n")}</div></details>`:""}</div>`:"";
   renderEvents(info.events);
 }
 function fmtT(iso){ if(!iso) return ""; const d=new Date(iso); return d.toLocaleString("uk-UA",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}); }
