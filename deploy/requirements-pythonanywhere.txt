@@ -4,3 +4,4 @@ fastapi>=0.110
 a2wsgi>=1.10,<2
 scikit-learn==1.8.0
 httpx>=0.28,<0.29
+tifffile>=2023.1
