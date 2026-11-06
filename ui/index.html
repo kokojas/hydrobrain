@@ -318,12 +318,12 @@ details.tech summary{cursor:pointer;color:var(--muted);font-size:14px}
   <b>http://localhost:8000</b> і натисніть Ctrl+F5.
 </div>
 <div id="pagesBanner" class="note hidden" style="max-width:1180px;margin:16px auto;padding:16px" role="status">
-  <b>Перегляд інтерфейсу HydroBrain 1.11.2</b>
-  <p>Сайт опубліковано на GitHub Pages. Карта, форми та довідники доступні для перегляду. Створення полів і розрахунки потребують підключення сервера HydroBrain.</p>
-  <details><summary>Підключити сервер для розрахунків</summary>
+  <b>HydroBrain 1.11.2 — онлайн</b>
+  <p>Сервер розрахунків працює на PythonAnywhere. Створюйте поля, додавайте покази датчика та отримуйте рекомендації щодо поливу. Дані зберігаються на сервері; ця версія має спільний список полів для всіх відвідувачів.</p>
+  <details><summary>Налаштування сервера</summary>
     <form id="serverForm" style="margin-top:12px"><label for="serverUrl">HTTPS-адреса сервера HydroBrain</label>
       <input id="serverUrl" type="url" placeholder="https://your-hydrobrain-server.example" required style="width:100%;margin:8px 0">
-      <button type="submit">Підключити</button> <button type="button" id="serverReset">Режим перегляду</button>
+      <button type="submit">Підключити</button> <button type="button" id="serverReset">Відновити стандартну адресу</button>
       <p class="muted small">Адреса зберігається лише в цьому браузері. Підключайте сервер, якому довіряєте: йому передаватимуться дані ваших полів.</p>
     </form>
   </details>
@@ -463,7 +463,7 @@ function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("show");cl
 const ON_PAGES = location.hostname.endsWith(".github.io");
 let savedServer = "";
 try { savedServer = localStorage.getItem("hb-server") || ""; } catch(e) {}
-const API = ON_PAGES ? savedServer : (location.protocol === "file:" ? "http://localhost:8000" : "");
+const API = ON_PAGES ? (savedServer || "https://arlikfolkovic.pythonanywhere.com") : (location.protocol === "file:" ? "http://localhost:8000" : "");
 if(ON_PAGES){
   $("#pagesBanner").classList.remove("hidden");
   $("#serverUrl").value=API;

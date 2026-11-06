@@ -2,9 +2,27 @@
 
 **Сайт:** https://kokojas.github.io/hydrobrain/
 
-На GitHub Pages доступний інтерфейс, карта, форми й довідники. GitHub Pages не виконує Python: створення полів, збереження даних і рекомендації потребують окремого сервера. HTTPS-адресу запущеного `server:app` можна вказати у верхній частині сайту. Дані полів зберігаються на підключеному сервері.
+**PythonAnywhere (бекенд і той самий інтерфейс):** https://arlikfolkovic.pythonanywhere.com/
 
-Публікація автоматична: зміни `main` запускають `.github/workflows/pages.yml`; публікується лише папка `ui`.
+GitHub Pages автоматично звертається до бекенда PythonAnywhere. Дані полів зберігаються у `~/hydrobrain-data`, окремо від коду. Це початкова версія зі спільним списком полів для всіх відвідувачів, без облікових записів.
+
+Перевірка стану: `/healthz`. Документація API: `/docs`.
+
+### PythonAnywhere
+
+Python 3.12; середовище `~/.virtualenvs/hydrobrain` створюється з `--system-site-packages`. Додаткові залежності — `deploy/requirements-pythonanywhere.txt`.
+
+WSGI-файл `/var/www/arlikfolkovic_pythonanywhere_com_wsgi.py`:
+
+```python
+import sys
+sys.path.insert(0, '/home/arlikfolkovic/hydrobrain')
+from deploy.pythonanywhere_wsgi import application
+```
+
+Після `git pull --ff-only` перезавантажте застосунок у Web. Безкоштовний сайт потребує щомісячного продовження у Web; PythonAnywhere також обмежує CPU, дисковий простір і вихідні мережеві запити.
+
+Публікація інтерфейсу автоматична: зміни `main` запускають `.github/workflows/pages.yml`; публікується лише папка `ui`.
 
 ---
 

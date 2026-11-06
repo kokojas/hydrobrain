@@ -83,6 +83,12 @@ def schema(mode: str = "beginner"):
     return brain.input_schema(mode)
 
 
+@app.get("/healthz")
+def health():
+    return {"status": "ok", "version": __version__, "offline_demo": OFFLINE,
+            "ml_available": brain.ml_core is not None}
+
+
 @app.get("/catalog")
 def catalog():
     return brain.catalog()

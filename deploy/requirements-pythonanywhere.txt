@@ -1,0 +1,6 @@
+# Use Python 3.12 with --system-site-packages on PythonAnywhere.
+# numpy, scipy, pandas, requests, joblib and tzdata are preinstalled.
+fastapi>=0.110
+a2wsgi>=1.10,<2
+scikit-learn==1.8.0
+httpx>=0.28,<0.29
