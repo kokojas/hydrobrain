@@ -643,7 +643,12 @@ async function openField(fid){
     ["", `${Number(s.lat).toFixed(3)}, ${Number(s.lon).toFixed(3)}`],
   ];
   $("#fSub").innerHTML=facts.filter(f=>f[1]!=null&&f[1]!=="").map(([k,v])=>`<li class="num">${k?`<span>${esc(k)}</span> `:""}${esc(v)}</li>`).join("");
-  $("#fWarn").innerHTML=(info.warnings||[]).length?`<div class="warn">${info.warnings.map(esc).join("<br>")}</div>`:"";
+  const warnings = info.warnings || [];
+  const summaries = warnings.map(w => w.startsWith("Геологія: геологічні сервіси не дали опису породи")
+    ? "Геологічні сервіси недоступні. Використано довідниковий тип породи; його можна уточнити в режимі експерта."
+    : w);
+  $("#fWarn").innerHTML=warnings.length?`<div class="warn">${summaries.map(esc).join("<br>")}
+    ${summaries.some((s,i)=>s!==warnings[i])?`<details class="tech"><summary>Деталі джерел даних</summary>${warnings.map(esc).join("<br>")}</details>`:""}</div>`:"";
   renderEvents(info.events);
 }
 function fmtT(iso){ if(!iso) return ""; const d=new Date(iso); return d.toLocaleString("uk-UA",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}); }
