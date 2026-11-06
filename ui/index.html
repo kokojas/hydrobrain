@@ -317,6 +317,18 @@ details.tech summary{cursor:pointer;color:var(--muted);font-size:14px}
   <code>uvicorn server:app --port 8000</code> (не закривайте це вікно), а потім відкрийте в браузері
   <b>http://localhost:8000</b> і натисніть Ctrl+F5.
 </div>
+<div id="pagesBanner" class="note hidden" style="max-width:1180px;margin:16px auto;padding:16px" role="status">
+  <b>Перегляд інтерфейсу HydroBrain 1.11.2</b>
+  <p>Сайт опубліковано на GitHub Pages. Карта, форми та довідники доступні для перегляду. Створення полів і розрахунки потребують підключення сервера HydroBrain.</p>
+  <details><summary>Підключити сервер для розрахунків</summary>
+    <form id="serverForm" style="margin-top:12px"><label for="serverUrl">HTTPS-адреса сервера HydroBrain</label>
+      <input id="serverUrl" type="url" placeholder="https://your-hydrobrain-server.example" required style="width:100%;margin:8px 0">
+      <button type="submit">Підключити</button> <button type="button" id="serverReset">Режим перегляду</button>
+      <p class="muted small">Адреса зберігається лише в цьому браузері. Підключайте сервер, якому довіряєте: йому передаватимуться дані ваших полів.</p>
+    </form>
+  </details>
+  <a href="https://github.com/kokojas/hydrobrain" target="_blank" rel="noopener">Код і запуск сервера на GitHub</a>
+</div>
 <main>
   <!-- ліва колонка: поля -->
   <aside class="panel">
@@ -448,8 +460,35 @@ function toggleTheme(){
 
 function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>e.classList.remove("show"),2600)}
 // Якщо сторінку відкрито як файл (file://), звертаємось до локального сервера напряму
-const API = location.protocol === "file:" ? "http://localhost:8000" : "";
+const ON_PAGES = location.hostname.endsWith(".github.io");
+let savedServer = "";
+try { savedServer = localStorage.getItem("hb-server") || ""; } catch(e) {}
+const API = ON_PAGES ? savedServer : (location.protocol === "file:" ? "http://localhost:8000" : "");
+if(ON_PAGES){
+  $("#pagesBanner").classList.remove("hidden");
+  $("#serverUrl").value=API;
+  $("#serverForm").onsubmit=e=>{
+    e.preventDefault();
+    try {
+      const url=new URL($("#serverUrl").value);
+      if(url.protocol!=="https:" || url.username || url.password || url.search || url.hash) throw new Error("Вкажіть HTTPS-адресу сервера без пароля та параметрів");
+      localStorage.setItem("hb-server",url.href.replace(/\/$/,"")); location.reload();
+    } catch(err) { toast(err.message); }
+  };
+  $("#serverReset").onclick=()=>{try{localStorage.removeItem("hb-server");location.reload();}catch(e){toast(e.message)}};
+}
+
 async function api(path, opt={}){
+  if(ON_PAGES && !API){
+    if(path==="/fields_detailed" || path==="/fields" && (!opt.method || opt.method==="GET")) return [];
+    const resources={"/catalog":"catalog", "/schema/beginner":"schema-beginner", "/schema/expert":"schema-expert"};
+    if(resources[path]){
+      const r=await fetch("static-api/"+resources[path]+".json");
+      if(!r.ok) throw new Error("Не вдалося завантажити довідник");
+      return r.json();
+    }
+    throw new Error("Для збереження полів і розрахунків підключіть сервер у верхній частині сторінки.");
+  }
   let r;
   try{ r = await fetch(API + path, {headers:{"Content-Type":"application/json"}, ...opt}); }
   catch(e){ serverDown(); throw new Error("сервер HydroBrain не відповідає"); }
@@ -459,7 +498,10 @@ async function api(path, opt={}){
 }
 window.addEventListener("unhandledrejection", event => { toast(event.reason?.message || "Не вдалося виконати дію"); event.preventDefault(); });
 function serverDown(){
-  const b=$("#srvBanner"); if(b) b.classList.remove("hidden");
+  const b=$("#srvBanner");
+  if(ON_PAGES){
+    if(b){b.textContent="Сервер HydroBrain недоступний. Перевірте його адресу та доступність у налаштуваннях вище.";b.classList.remove("hidden");}
+  } else if(b) b.classList.remove("hidden");
 }
 function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 const ico = (id, cls="") => `<svg class="${cls}" aria-hidden="true"><use href="#${id}"/></svg>`;
