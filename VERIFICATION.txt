@@ -1,0 +1,18 @@
+HydroBrain 1.11.1 — 2026-10-29
+
+Environment: Python 3.12; scikit-learn 1.8.0; Linux.
+Command: OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m pytest -q tests
+
+........................................................................ [ 54%]
+............................................................             [100%]
+=============================== warnings summary ===============================
+tests/test_review_1111.py::test_http_contract_and_offline_flow
+  /root/.local/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+132 passed, 1 warning in 52.07s
+
+Additional checks: Python compileall passed; node --check for embedded UI JavaScript passed; offline CLI demo completed.
+Live external API availability, visual browser QA, scientific model retraining and full research backtests were not run.
+The test warning is an installed Starlette test-client deprecation notice.

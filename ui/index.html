@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HydroBrain — полив</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2C16 2 5 14 5 20.5a11 11 0 0 0 22 0C27 14 16 2 16 2Z' fill='%232F7598'/%3E%3Cpath d='M10 24c2-7 8-10 12-10-1 6-6 10-12 10Z' fill='%23CFE3B8'/%3E%3C/svg%3E">
+<script>
+// тема: збережений вибір або системна; ставимо до відмальовки, щоб не блимало
+(function(){try{var t=localStorage.getItem("hb-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}})();
+</script>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<script src="vendor/leaflet/leaflet.js"></script>
+<style>
+/* ---------- шрифти (локально, працюють без інтернету) ---------- */
+@font-face{font-family:"Alegreya";font-style:normal;font-weight:400;font-display:swap;src:url(vendor/fonts/alegreya-cyrillic-400-normal.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"Alegreya";font-style:normal;font-weight:400;font-display:swap;src:url(vendor/fonts/alegreya-latin-400-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Alegreya";font-style:italic;font-weight:400;font-display:swap;src:url(vendor/fonts/alegreya-cyrillic-400-italic.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"Alegreya";font-style:italic;font-weight:400;font-display:swap;src:url(vendor/fonts/alegreya-latin-400-italic.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Alegreya";font-style:normal;font-weight:600;font-display:swap;src:url(vendor/fonts/alegreya-cyrillic-600-normal.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"Alegreya";font-style:normal;font-weight:600;font-display:swap;src:url(vendor/fonts/alegreya-latin-600-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Alegreya";font-style:normal;font-weight:700;font-display:swap;src:url(vendor/fonts/alegreya-cyrillic-700-normal.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"Alegreya";font-style:normal;font-weight:700;font-display:swap;src:url(vendor/fonts/alegreya-latin-700-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Alegreya Sans";font-style:normal;font-weight:400;font-display:swap;src:url(vendor/fonts/alegreya-sans-cyrillic-400-normal.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"Alegreya Sans";font-style:normal;font-weight:400;font-display:swap;src:url(vendor/fonts/alegreya-sans-latin-400-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Alegreya Sans";font-style:italic;font-weight:400;font-display:swap;src:url(vendor/fonts/alegreya-sans-cyrillic-400-italic.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"Alegreya Sans";font-style:italic;font-weight:400;font-display:swap;src:url(vendor/fonts/alegreya-sans-latin-400-italic.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Alegreya Sans";font-style:normal;font-weight:500;font-display:swap;src:url(vendor/fonts/alegreya-sans-cyrillic-500-normal.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"Alegreya Sans";font-style:normal;font-weight:500;font-display:swap;src:url(vendor/fonts/alegreya-sans-latin-500-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Alegreya Sans";font-style:normal;font-weight:700;font-display:swap;src:url(vendor/fonts/alegreya-sans-cyrillic-700-normal.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
+@font-face{font-family:"Alegreya Sans";font-style:normal;font-weight:700;font-display:swap;src:url(vendor/fonts/alegreya-sans-latin-700-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+
+/* ---------- палітра: «гербарій» (світла) і «нічний сад» (темна) ---------- */
+:root{
+  color-scheme:light;
+  --paper:#ECEFE3;      /* шавлієвий папір */
+  --panel:#F7F8F1;
+  --panel-2:#E4E9D8;    /* заглиблення: поля вводу, плитки */
+  --ink:#22301F;        /* мох */
+  --muted:#5D6A55;
+  --line:#CDD5BF;
+  --leaf:#46703A;  --leaf-ink:#F4F7EC; --leaf-soft:#D9E5C8;
+  --water:#2F7598; --water-soft:#D3E5EC;
+  --soil:#8A5D3B;  --soil-soft:#E8DACB;
+  --sun:#AD7A22;   --sun-soft:#F3E6C6; --sun-ink:#6A4708;
+  --err:#A8402C;
+  --go:var(--water); --wait:var(--sun); --skip:var(--leaf);
+  --lift:0 1px 0 rgba(255,255,255,.7) inset, 0 10px 26px -18px rgba(38,58,28,.45);
+  --grain-op:.05; --grain-blend:multiply;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --paper:#111915; --panel:#18221C; --panel-2:#1F2B23; --ink:#E0E8D5; --muted:#9AA88E; --line:#2D3B30;
+    --leaf:#93C470; --leaf-ink:#10180F; --leaf-soft:#25371F;
+    --water:#72B6D6; --water-soft:#1A3240;
+    --soil:#C99A72; --soil-soft:#352A20;
+    --sun:#E2B256; --sun-soft:#352B17; --sun-ink:#F0CF8A;
+    --err:#EE8A72;
+    --lift:0 1px 0 rgba(255,255,255,.03) inset, 0 14px 30px -20px rgba(0,0,0,.8);
+    --grain-op:.07; --grain-blend:soft-light;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --paper:#111915; --panel:#18221C; --panel-2:#1F2B23; --ink:#E0E8D5; --muted:#9AA88E; --line:#2D3B30;
+  --leaf:#93C470; --leaf-ink:#10180F; --leaf-soft:#25371F;
+  --water:#72B6D6; --water-soft:#1A3240;
+  --soil:#C99A72; --soil-soft:#352A20;
+  --sun:#E2B256; --sun-soft:#352B17; --sun-ink:#F0CF8A;
+  --err:#EE8A72;
+  --lift:0 1px 0 rgba(255,255,255,.03) inset, 0 14px 30px -20px rgba(0,0,0,.8);
+  --grain-op:.07; --grain-blend:soft-light;
+}
+
+/* ---------- основа ---------- */
+*{box-sizing:border-box}
+html{background:var(--paper)}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:16px/1.5 "Alegreya Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;min-height:100vh}
+/* легке зерно паперу */
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:var(--grain-op);mix-blend-mode:var(--grain-blend);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+header,main,#srvBanner,.toast{position:relative;z-index:1}
+h1,h2,h3{font-family:"Alegreya",Georgia,serif;font-weight:600;line-height:1.2}
+h2{font-size:21px;margin:0 0 12px;letter-spacing:-.005em}
+h3{font-size:16px;margin:18px 0 8px;font-style:italic;font-weight:400;color:var(--soil)}
+a{color:var(--water)}
+code{font-size:.92em;background:var(--panel-2);padding:1px 5px;border-radius:5px}
+.num{font-variant-numeric:lining-nums tabular-nums}
+::selection{background:var(--leaf-soft)}
+
+/* ---------- шапка з лучною смугою ---------- */
+header{padding:18px 24px 0;background:var(--panel);overflow:hidden}
+.hd{max-width:1280px;margin:0 auto;display:flex;align-items:center;gap:14px;padding-bottom:6px}
+.logo{width:40px;height:40px;flex:none}
+.brand h1{margin:0;font-size:28px;font-weight:700;letter-spacing:-.01em}
+.brand .sub{font-family:"Alegreya",serif;font-style:italic;color:var(--muted);font-size:16px;margin-top:-2px}
+.hd-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+header .demo{font-size:13px;padding:4px 12px;border-radius:14px 4px 14px 4px;background:var(--sun-soft);color:var(--sun-ink);display:none}
+.theme-btn{width:40px;height:40px;padding:0;display:grid;place-items:center;border-radius:50%}
+.theme-btn svg{width:20px;height:20px}
+.theme-btn .moon{display:none}
+:root[data-theme="dark"] .theme-btn .sun{display:none}
+:root[data-theme="dark"] .theme-btn .moon{display:block}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .theme-btn .sun{display:none}
+  :root:not([data-theme="light"]) .theme-btn .moon{display:block}
+}
+.meadow{display:block;width:calc(100% + 48px);height:56px;margin:0 -24px;color:var(--leaf)}
+.meadow .m-ground{fill:none;stroke:var(--soil);stroke-width:1.4;opacity:.55}
+.meadow .m-blade{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;opacity:.7}
+.meadow .m-leaf{fill:currentColor;opacity:.75}
+.meadow .m-seed{fill:var(--sun);opacity:.85}
+.meadow > path.m-blade,.meadow > g{transform-box:fill-box;transform-origin:50% 100%;animation:grow .9s cubic-bezier(.2,.8,.3,1) both;animation-delay:var(--d,0s)}
+@keyframes grow{from{transform:scaleY(0);opacity:0}to{transform:scaleY(1);opacity:1}}
+@media (prefers-reduced-motion: reduce){.meadow > path.m-blade,.meadow > g{animation:none}}
+
+/* ---------- сітка ---------- */
+main{display:grid;grid-template-columns:270px minmax(0,1fr);gap:20px;padding:22px 24px 48px;max-width:1328px;margin:0 auto}
+@media (max-width:860px){main{grid-template-columns:minmax(0,1fr);padding:16px 16px 40px;gap:14px}
+  header{padding:14px 16px 0}.meadow{width:calc(100% + 32px);margin:0 -16px}
+  .brand h1{font-size:24px}.brand .sub{font-size:14px}}
+.demo .short{display:none}
+@media (max-width:520px){.brand .sub{display:none}.demo .long{display:none}.demo .short{display:inline}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px 20px;box-shadow:var(--lift)}
+.stack > * + *{margin-top:14px}
+aside.panel{align-self:start;position:sticky;top:16px}
+@media (max-width:860px){aside.panel{position:static}}
+
+/* ---------- кнопки й поля вводу ---------- */
+button{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+  border-radius:999px;padding:8px 16px;cursor:pointer;transition:background .15s,border-color .15s,transform .1s}
+button:hover{border-color:var(--leaf);background:var(--leaf-soft)}
+button:active{transform:translateY(1px)}
+button.primary{background:var(--leaf);color:var(--leaf-ink);border-color:var(--leaf);font-weight:700;
+  border-radius:18px 6px 18px 6px;padding:9px 18px}
+button.primary:hover{background:color-mix(in srgb,var(--leaf) 88%,var(--ink))}
+button:disabled{opacity:.55;cursor:wait}
+:focus-visible{outline:2px solid var(--water);outline-offset:2px}
+.seg{display:inline-flex;background:var(--panel-2);border-radius:999px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;padding:6px 14px;font-size:15px}
+.seg button:hover{background:color-mix(in srgb,var(--leaf-soft) 60%,transparent)}
+.seg button.on{background:var(--panel);color:var(--leaf);font-weight:700;box-shadow:0 1px 3px rgba(30,50,20,.18)}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px 16px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:14px}
+label.f span{color:var(--muted)}
+label.f span b{font-family:"Alegreya",serif;font-style:italic;font-weight:400;color:var(--soil)}
+input,select,textarea{font:inherit;font-size:15px;padding:8px 11px;border:1px solid var(--line);border-radius:12px;
+  background:var(--panel-2);color:var(--ink);width:100%;font-variant-numeric:lining-nums}
+input:focus,select:focus{outline:none;border-color:var(--leaf);box-shadow:0 0 0 3px color-mix(in srgb,var(--leaf) 22%,transparent);background:var(--panel)}
+input::placeholder{color:color-mix(in srgb,var(--muted) 75%,transparent)}
+details.group{border-top:1px dashed var(--line);padding:8px 0}
+details.group summary{cursor:pointer;font-family:"Alegreya",serif;font-weight:600;font-size:17px;padding:4px 0;list-style:none;display:flex;align-items:center;gap:8px}
+details.group summary::-webkit-details-marker{display:none}
+details.group summary::before{content:"";width:10px;height:10px;border-radius:10px 1px 10px 1px;background:var(--leaf);transition:transform .2s;transform:rotate(-45deg)}
+details.group[open] summary::before{transform:rotate(45deg)}
+#formBody > .form-grid + .form-grid{margin-top:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.row > *{flex:1 1 120px}
+.hidden{display:none!important}
+.muted{color:var(--muted)}
+.small{font-size:14px}
+.err{color:var(--err)}
+
+/* ---------- список полів ---------- */
+.side-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.side-head h2{margin:0;flex:1}
+.fieldlist{list-style:none;margin:0;padding:0}
+.fieldlist li{padding:9px 12px;border-radius:14px;cursor:pointer;display:flex;align-items:center;gap:10px;line-height:1.25}
+.fieldlist li + li{margin-top:2px}
+.fieldlist li:hover{background:var(--panel-2)}
+.fieldlist li.active{background:var(--leaf-soft)}
+.fieldlist .lf{width:18px;height:18px;flex:none;color:var(--leaf);opacity:.55}
+.fieldlist li.active .lf{opacity:1}
+.fieldlist .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.fieldlist small{color:var(--muted);font-size:13px;font-style:italic;font-family:"Alegreya",serif}
+.empty{display:flex;gap:10px;align-items:flex-start;font-size:14px}
+.empty svg{width:34px;height:34px;flex:none;color:var(--leaf)}
+
+/* ---------- картка поля ---------- */
+.field-head{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.field-head > div{flex:1 1 300px}
+.field-head h2{font-size:26px;margin:0 0 8px}
+.facts{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}
+.facts li{font-size:14px;background:var(--panel-2);border-radius:10px 3px 10px 3px;padding:3px 10px}
+.facts li span{color:var(--muted)}
+#map{height:280px;border-radius:18px;border:1px solid var(--line);margin-bottom:14px;z-index:0}
+.leaflet-container{font-family:inherit;background:var(--panel-2)}
+.leaflet-control-layers,.leaflet-bar a{background:var(--panel)!important;color:var(--ink)!important;border-color:var(--line)!important}
+.leaflet-control-layers{border-radius:12px!important;border:1px solid var(--line)!important;box-shadow:var(--lift)!important}
+.leaflet-control-attribution{background:color-mix(in srgb,var(--panel) 80%,transparent)!important;color:var(--muted)!important}
+.leaflet-control-attribution a{color:var(--water)!important}
+
+/* ---------- вердикт ---------- */
+.verdict{display:flex;gap:18px;align-items:center;padding:18px 22px;border-radius:34px 8px 34px 8px;
+  background:color-mix(in srgb,var(--c) 13%,var(--panel));border:1px solid color-mix(in srgb,var(--c) 35%,transparent);position:relative;overflow:hidden}
+.verdict::after{content:"";position:absolute;right:22px;top:50%;width:92px;height:130px;margin-top:-65px;opacity:.16;background:var(--c);pointer-events:none;
+  -webkit-mask:var(--leafmask) center/contain no-repeat;mask:var(--leafmask) center/contain no-repeat;transform:rotate(38deg)}
+.verdict > div:last-child{position:relative;z-index:1;padding-right:70px}
+@media (max-width:520px){.verdict{padding:16px;gap:14px}.verdict .t{font-size:23px}.verdict > div:last-child{padding-right:0}.verdict::after{right:-18px;opacity:.1}}
+.verdict .icon{width:58px;height:58px;border-radius:50% 50% 50% 12%;background:var(--c);color:var(--panel);display:grid;place-items:center;flex:none}
+.verdict .icon svg{width:32px;height:32px}
+.verdict .t{font-family:"Alegreya",serif;font-size:27px;font-weight:700;line-height:1.15;letter-spacing:-.01em}
+.verdict .w{color:var(--muted);font-size:15px;margin-top:3px}
+.verdict .w b{color:var(--ink);font-weight:500}
+:root{--leafmask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 100'%3E%3Cpath fill-rule='evenodd' d='M35 2C62 24 70 58 35 92C0 58 8 24 35 2ZM34 20h2v70h-2ZM35 40l14-10 1.2 1.6L35 43ZM35 58l16-11 1.2 1.6L35 61ZM35 49L20 39l-1.2 1.6L35 52ZM35 68L18 57l-1.2 1.6L35 71Z'/%3E%3C/svg%3E")}
+.summary{margin:14px 0 6px;font-size:17px;max-width:72ch}
+
+/* ---------- плитки, шкала, таблиця ---------- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin:14px 0}
+.tile{background:var(--panel-2);border-radius:16px 5px 16px 5px;padding:10px 14px}
+.tile b{display:block;font-family:"Alegreya",serif;font-size:24px;font-weight:600;line-height:1.15;font-variant-numeric:lining-nums tabular-nums}
+.tile span{color:var(--muted);font-size:13.5px;line-height:1.3;display:block;margin-top:2px}
+.tile.lead{background:color-mix(in srgb,var(--water) 14%,var(--panel))}
+.tile.lead b{color:var(--water)}
+.gauge{position:relative;height:30px;border-radius:15px;margin:8px 0 28px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--soil) 38%,var(--panel)),color-mix(in srgb,var(--soil) 14%,var(--panel)) 45%,var(--water-soft));
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.12)}
+.gauge .fill{position:absolute;left:0;top:4px;bottom:4px;margin-left:4px;border-radius:12px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--water) 70%,var(--panel)),var(--water));min-width:8px}
+.gauge .band{position:absolute;top:0;bottom:0;background:var(--water);opacity:.2;border-radius:15px}
+.gauge .raw{position:absolute;top:-6px;bottom:-6px;width:3px;margin-left:-1.5px;border-radius:2px;background:var(--sun)}
+.gauge .lbl{position:absolute;top:36px;font-size:13px;color:var(--muted);transform:translateX(-50%);white-space:nowrap;font-variant-numeric:lining-nums}
+.gauge .lbl.stress{color:var(--sun-ink);font-weight:500}
+ul.reasons{margin:4px 0;padding:0;list-style:none}
+ul.reasons li{margin:6px 0;padding-left:20px;position:relative}
+ul.reasons li::before{content:"";position:absolute;left:2px;top:.55em;width:9px;height:9px;border-radius:9px 1px 9px 1px;background:var(--leaf);opacity:.7;transform:rotate(-45deg)}
+table{border-collapse:collapse;width:100%;font-size:15px;font-variant-numeric:lining-nums tabular-nums}
+th{font-weight:500;color:var(--muted);font-size:13.5px}
+th,td{padding:7px 8px;border-bottom:1px dashed var(--line);text-align:right}
+tr:last-child td{border-bottom:0}
+th:first-child,td:first-child{text-align:left}
+.rain{display:inline-block;vertical-align:middle;width:46px;height:6px;border-radius:6px;background:var(--panel-2);margin-right:8px;overflow:hidden}
+.rain i{display:block;height:100%;background:var(--water);border-radius:6px}
+@media (max-width:520px){.rain{display:none}td{white-space:nowrap}th,td{padding:7px 5px}}
+.warn{overflow-wrap:anywhere;background:var(--sun-soft);color:var(--sun-ink);border-radius:14px 4px 14px 4px;padding:10px 14px;font-size:14.5px;margin:10px 0}
+.note{background:var(--leaf-soft);border-radius:18px 5px 18px 5px;padding:12px 16px;margin:12px 0;font-size:15px}
+.note h3{margin:0 0 4px;color:var(--leaf);font-style:normal;font-weight:600;font-size:16.5px}
+.note .step{margin-top:8px}
+.note .step b{color:var(--leaf)}
+.src{font-size:14.5px;margin:10px 0;color:var(--muted)}
+.src b{color:var(--ink);font-weight:500}
+svg text{fill:var(--muted);font-size:11px;font-family:"Alegreya Sans",sans-serif}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media (max-width:960px){.two{grid-template-columns:1fr}}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:16px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+details.tech summary{cursor:pointer;color:var(--muted);font-size:14px}
+.card-icon{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.card-icon svg{width:30px;height:30px;color:var(--leaf);flex:none}
+.card-icon h2{margin:0}
+.hint{font-size:14px;color:var(--muted);margin:10px 0 0}
+.events{font-size:15px;list-style:none;margin:0;padding:0}
+.events li{display:flex;gap:12px;padding:6px 0;border-bottom:1px dashed var(--line)}
+.events li:last-child{border-bottom:0}
+.events time{color:var(--muted);min-width:96px;font-variant-numeric:lining-nums tabular-nums}
+.events .k-irr{color:var(--water)} .events .k-sen{color:var(--soil)} .events .k-fer{color:var(--leaf)}
+
+/* ---------- вітальний екран: етапи як ріст рослини ---------- */
+.welcome h2{font-size:26px;margin-bottom:4px}
+.welcome .lede{color:var(--muted);margin:0 0 18px;font-family:"Alegreya",serif;font-style:italic;font-size:17px}
+.stages{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;counter-reset:st}
+@media (max-width:1060px){.stages{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:480px){.stages{grid-template-columns:1fr}}
+.stages li{counter-increment:st;background:var(--panel-2);border-radius:22px 6px 22px 6px;padding:14px 16px 16px}
+.stages svg{width:64px;height:64px;color:var(--leaf);display:block;margin-bottom:6px}
+.stages li::before{content:counter(st);font-family:"Alegreya",serif;font-weight:700;font-size:15px;color:var(--soil);display:block}
+.stages p{margin:2px 0 0;font-size:15px}
+
+.toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,8px);background:var(--ink);color:var(--paper);padding:10px 18px;
+  border-radius:18px 5px 18px 5px;font-size:15px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;max-width:calc(100% - 32px)}
+.toast.show{opacity:.96;transform:translate(-50%,0)}
+#srvBanner{max-width:1280px;margin:16px auto 0;font-size:15px}
+@media (max-width:1328px){#srvBanner{margin:16px 24px 0}}
+@media (max-width:860px){#srvBanner{margin:12px 16px 0}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- набір ботанічних іконок (лінійний малюнок) -->
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19C5 10 11 5 20 4c0 9-5 15-15 15Z" fill="currentColor" opacity=".9"/><path d="M5 19 14 10" stroke="var(--panel)" stroke-width="1.4" fill="none" stroke-linecap="round"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s-6 7-6 11a6 6 0 0 0 12 0c0-4-6-11-6-11Z"/><path d="M9.2 14.5a3 3 0 0 0 2.6 2.7"/></symbol>
+  <symbol id="i-dawn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 18h18"/><path d="M7 18a5 5 0 0 1 10 0"/><path d="M12 6v3M5.6 9.6l1.8 1.8M18.4 9.6l-1.8 1.8M2.5 14.5h2M19.5 14.5h2"/><path d="M8 21h8"/></symbol>
+  <symbol id="i-sprout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V11"/><path d="M12 13C12 8.5 8.5 6 4 6c0 4.5 3 7 8 7Z"/><path d="M12 11c0-4 3-6.5 8-6.5 0 4.5-3.5 6.5-8 6.5Z"/><path d="M7 21h10"/></symbol>
+  <symbol id="i-probe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c3-1.2 6 1.2 9 0s6-1.2 9 0"/><rect x="10" y="3" width="4" height="6" rx="1.5"/><path d="M12 9v12"/><path d="M12 15h2.5M12 18h2.5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/><path d="M15 4.5c1 .2 1.8 1 2 2M18.5 8.5c.6.1 1 .5 1.1 1.1"/></symbol>
+  <symbol id="i-can" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9h9v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2Z"/><path d="M14 11l5-4"/><path d="M18 5.5l2.5 2.5"/><path d="M7.5 9V7a2 2 0 0 1 4 0v2"/><path d="M21 11.5v.01M19.5 13.5v.01M21.5 14.5v.01"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H19v15H5.5A1.5 1.5 0 0 0 4 20.5Z"/><path d="M4 20.5C4 19.7 4.7 19 5.5 19H19v2H5.5"/><path d="M11.5 15c0-3.5 2-5.5 5-5.5 0 3.5-2 5.5-5 5.5ZM11.5 15l2.5-2.5"/></symbol>
+</svg>
+
+<header>
+  <div class="hd">
+    <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M20 3S7 17.5 7 25.5a13 13 0 0 0 26 0C33 17.5 20 3 20 3Z" fill="var(--water)"/>
+      <path d="M13 30.5c2.4-8 8.6-11.5 14.5-11.5-1 7.2-6.5 11.5-14.5 11.5Z" fill="var(--leaf-soft)"/>
+      <path d="M13 30.5l9-7" stroke="var(--water)" stroke-width="1.4" stroke-linecap="round"/>
+    </svg>
+    <div class="brand">
+      <h1>HydroBrain</h1>
+      <div class="sub">підкаже, чи поливати сьогодні</div>
+    </div>
+    <div class="hd-right">
+      <div class="demo" id="demoBadge"><span class="long">демо без інтернету: синтетична погода</span><span class="short">демо</span></div>
+      <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Змінити тему" aria-label="Змінити тему">
+        <svg class="sun"><use href="#i-sun"/></svg><svg class="moon"><use href="#i-moon"/></svg>
+      </button>
+    </div>
+  </div>
+  <svg class="meadow" viewBox="0 0 1600 56" preserveAspectRatio="xMidYMax slice" aria-hidden="true"><path class="m-ground" d="M0,48.8 L0,48.8 L20,48.4 L40,48.1 L60,48.1 L80,48.2 L100,48.4 L120,48.7 L140,49.1 L160,49.3 L180,49.4 L200,49.4 L220,49.2 L240,48.8 L260,48.3 L280,47.8 L300,47.3 L320,46.9 L340,46.7 L360,46.7 L380,46.9 L400,47.4 L420,48.0 L440,48.7 L460,49.4 L480,50.1 L500,50.7 L520,51.2 L540,51.5 L560,51.5 L580,51.4 L600,51.2 L620,50.9 L640,50.6 L660,50.4 L680,50.3 L700,50.4 L720,50.7 L740,51.1 L760,51.6 L780,52.2 L800,52.7 L820,53.2 L840,53.4 L860,53.5 L880,53.3 L900,52.9 L920,52.3 L940,51.7 L960,50.9 L980,50.3 L1000,49.7 L1020,49.2 L1040,49.0 L1060,48.9 L1080,49.0 L1100,49.3 L1120,49.5 L1140,49.8 L1160,50.0 L1180,50.0 L1200,49.9 L1220,49.5 L1240,49.1 L1260,48.5 L1280,47.9 L1300,47.3 L1320,46.8 L1340,46.5 L1360,46.4 L1380,46.6 L1400,46.9 L1420,47.4 L1440,48.1 L1460,48.7 L1480,49.4 L1500,50.0 L1520,50.4 L1540,50.6 L1560,50.6 L1580,50.5 L1600,50.3"/><path class="m-blade" style="--d:0.00s" d="M8.0,48.6 Q6.4,35.8 1.7,27.3 M10.2,48.6 Q10.5,33.9 11.4,24.0 M12.4,48.6 Q11.0,36.1 6.6,27.8 M14.6,48.6 Q14.8,40.0 15.3,34.2"/><g class="m-sprout" style="--d:0.15s"><path class="m-blade" d="M31.5,48.2 Q29.5,35.4 31.5,22.5"/><path class="m-leaf" d="M31.5,26.5 q-9,-4 -12,-11 q8,0 12,11z"/><path class="m-leaf" d="M31.5,30.5 q9,-3 13,-9 q-9,-1 -13,9z"/></g><path class="m-blade" style="--d:0.04s" d="M68.7,48.1 Q68.3,35.3 67.3,26.8 M70.9,48.1 Q72.2,31.8 75.9,21.0 M73.1,48.1 Q71.8,38.5 67.8,32.1 M75.3,48.1 Q74.2,40.3 70.8,35.1 M77.5,48.1 Q77.1,38.2 75.7,31.5"/><path class="m-blade" style="--d:0.07s" d="M109.0,48.6 Q109.1,38.3 109.4,31.5 M111.2,48.6 Q112.6,37.1 117.1,29.5 M113.4,48.6 Q112.2,40.3 108.9,34.9"/><path class="m-blade" style="--d:0.11s" d="M149.9,49.2 Q150.7,39.7 153.1,33.4 M152.1,49.2 Q150.8,41.5 146.8,36.4 M154.3,49.2 Q153.1,40.5 149.4,34.8 M156.5,49.2 Q157.1,37.7 158.9,30.0"/><path class="m-blade" style="--d:0.14s" d="M208.5,49.3 Q208.5,41.2 208.5,35.9 M210.7,49.3 Q209.3,34.8 205.0,25.1 M212.9,49.3 Q211.4,41.8 206.8,36.8 M215.1,49.3 Q215.4,38.2 216.2,30.8"/><path class="m-blade" style="--d:0.18s" d="M262.6,48.3 Q260.9,39.8 255.9,34.2 M264.8,48.3 Q263.4,39.3 259.4,33.3 M267.0,48.3 Q265.7,42.4 261.8,38.5 M269.2,48.3 Q270.5,40.9 274.4,36.0 M271.4,48.3 Q271.6,42.2 272.1,38.2"/><path class="m-blade" style="--d:0.21s" d="M330.1,46.8 Q329.6,39.2 328.1,34.2 M332.3,46.8 Q331.1,34.5 327.4,26.3 M334.5,46.8 Q333.5,40.0 330.7,35.5 M336.7,46.8 Q335.8,37.6 333.4,31.5 M338.9,46.8 Q338.4,41.4 337.0,37.8"/><path class="m-blade" style="--d:0.25s" d="M402.4,47.4 Q402.9,35.3 404.6,27.3 M404.6,47.4 Q405.9,36.3 409.8,28.8 M406.8,47.4 Q407.0,34.6 407.6,26.1 M409.0,47.4 Q408.9,38.9 408.7,33.3 M411.2,47.4 Q412.9,38.9 418.0,33.2"/><path class="m-blade" style="--d:0.28s" d="M444.3,48.8 Q443.1,41.6 439.5,36.7 M446.5,48.8 Q444.9,42.6 439.9,38.5 M448.7,48.8 Q447.5,36.6 443.8,28.5 M450.9,48.8 Q450.5,41.5 449.0,36.6 M453.1,48.8 Q454.9,42.5 460.0,38.2"/><path class="m-blade" style="--d:0.32s" d="M499.8,50.7 Q500.6,44.2 503.1,39.9 M502.0,50.7 Q502.0,41.6 502.2,35.5 M504.2,50.7 Q503.7,43.7 502.2,39.1"/><path class="m-blade" style="--d:0.35s" d="M570.7,51.5 Q569.2,43.7 564.9,38.6 M572.9,51.5 Q574.3,39.5 578.6,31.5 M575.1,51.5 Q575.2,43.3 575.7,37.8 M577.3,51.5 Q577.7,42.2 578.9,35.9 M579.5,51.5 Q578.4,39.9 575.2,32.2"/><g class="m-sprout" style="--d:0.45s"><path class="m-blade" d="M589.1,51.3 Q592.1,40.7 590.1,30.1"/><ellipse class="m-seed" cx="590.1" cy="27.6" rx="2.1" ry="3.6"/></g><path class="m-blade" style="--d:0.39s" d="M615.9,50.9 Q614.2,40.7 609.3,33.9 M618.1,50.9 Q618.7,43.4 620.8,38.3 M620.3,50.9 Q621.8,38.1 626.4,29.5 M622.5,50.9 Q622.0,37.8 620.6,29.1"/><g class="m-sprout" style="--d:0.48s"><path class="m-blade" d="M629.4,50.7 Q632.4,40.8 630.4,30.9"/><ellipse class="m-seed" cx="630.4" cy="28.4" rx="2.1" ry="3.6"/></g><path class="m-blade" style="--d:0.42s" d="M661.2,50.4 Q659.5,37.3 654.3,28.6 M663.4,50.4 Q663.9,37.9 665.4,29.6 M665.6,50.4 Q665.2,35.5 664.1,25.6 M667.8,50.4 Q669.2,39.4 673.3,32.1 M670.0,50.4 Q668.6,41.6 664.2,35.8"/><path class="m-blade" style="--d:0.46s" d="M725.2,50.8 Q726.0,42.3 728.4,36.6 M727.4,50.8 Q726.2,42.4 722.5,36.8 M729.6,50.8 Q728.4,38.3 724.7,30.0 M731.8,50.8 Q732.4,38.9 734.0,31.0"/><path class="m-blade" style="--d:0.49s" d="M783.0,52.3 Q783.8,46.7 786.1,43.0 M785.2,52.3 Q783.9,46.1 780.1,41.9 M787.4,52.3 Q788.7,39.2 792.6,30.5"/><g class="m-sprout" style="--d:0.64s"><path class="m-blade" d="M802.0,52.8 Q800.0,41.7 802.0,30.6"/><path class="m-leaf" d="M802.0,34.6 q-9,-4 -12,-11 q8,0 12,11z"/><path class="m-leaf" d="M802.0,38.6 q9,-3 13,-9 q-9,-1 -13,9z"/></g><path class="m-blade" style="--d:0.53s" d="M848.5,53.5 Q847.2,46.0 843.3,41.1 M850.7,53.5 Q850.5,41.0 850.1,32.6 M852.9,53.5 Q852.6,43.5 851.7,36.9 M855.1,53.5 Q855.2,40.9 855.5,32.5"/><path class="m-blade" style="--d:0.56s" d="M887.1,53.2 Q888.1,41.7 891.0,34.1 M889.3,53.2 Q889.7,45.0 891.0,39.5 M891.5,53.2 Q892.2,45.3 894.1,40.0 M893.7,53.2 Q894.7,43.6 897.6,37.3"/><path class="m-blade" style="--d:0.60s" d="M927.2,52.1 Q927.2,44.5 927.3,39.5 M929.4,52.1 Q930.8,42.3 935.2,35.8 M931.6,52.1 Q931.6,43.3 931.7,37.3"/><path class="m-blade" style="--d:0.63s" d="M990.1,49.9 Q990.1,40.6 990.2,34.3 M992.3,49.9 Q993.6,42.6 997.6,37.7 M994.5,49.9 Q995.9,37.3 1000.0,28.9 M996.7,49.9 Q996.4,43.0 995.5,38.3"/><path class="m-blade" style="--d:0.67s" d="M1039.5,49.0 Q1040.1,39.9 1041.9,33.8 M1041.7,49.0 Q1040.5,37.5 1036.9,29.8 M1043.9,49.0 Q1042.6,38.0 1038.9,30.7 M1046.1,49.0 Q1045.1,36.7 1042.2,28.5 M1048.3,49.0 Q1048.2,36.2 1048.1,27.6"/><path class="m-blade" style="--d:0.70s" d="M1107.5,49.4 Q1107.1,38.5 1106.1,31.2 M1109.7,49.4 Q1108.2,40.7 1103.9,34.9 M1111.9,49.4 Q1111.7,41.1 1111.3,35.6"/><path class="m-blade" style="--d:0.74s" d="M1159.3,50.0 Q1157.8,39.7 1153.2,32.8 M1161.5,50.0 Q1163.1,36.9 1168.1,28.2 M1163.7,50.0 Q1162.1,43.7 1157.2,39.6 M1165.9,50.0 Q1164.6,38.5 1160.7,30.8 M1168.1,50.0 Q1169.2,41.3 1172.6,35.5"/><path class="m-blade" style="--d:0.77s" d="M1202.7,49.8 Q1201.2,40.0 1196.9,33.4 M1204.9,49.8 Q1204.6,44.0 1203.8,40.1 M1207.1,49.8 Q1207.5,43.9 1209.0,39.9 M1209.3,49.8 Q1210.5,35.3 1214.3,25.5 M1211.5,49.8 Q1211.3,43.9 1210.8,40.0"/><path class="m-blade" style="--d:0.81s" d="M1260.6,48.5 Q1261.3,35.7 1263.5,27.1 M1262.8,48.5 Q1261.9,35.8 1259.4,27.3 M1265.0,48.5 Q1265.4,41.7 1266.8,37.1 M1267.2,48.5 Q1267.0,38.9 1266.4,32.6"/><path class="m-blade" style="--d:0.84s" d="M1308.3,47.1 Q1306.6,30.6 1301.6,19.7 M1310.5,47.1 Q1310.6,37.7 1310.7,31.5 M1312.7,47.1 Q1313.3,39.8 1314.9,34.9"/><path class="m-blade" style="--d:0.88s" d="M1370.0,46.5 Q1370.0,34.6 1370.0,26.6 M1372.2,46.5 Q1371.6,35.7 1370.0,28.5 M1374.4,46.5 Q1374.8,34.6 1376.3,26.6 M1376.6,46.5 Q1375.0,37.9 1370.3,32.2 M1378.8,46.5 Q1379.6,38.4 1382.1,33.1"/><path class="m-blade" style="--d:0.91s" d="M1413.8,47.2 Q1413.9,36.7 1413.9,29.6 M1416.0,47.2 Q1416.7,34.3 1418.7,25.6 M1418.2,47.2 Q1417.4,41.5 1415.0,37.7"/><g class="m-sprout" style="--d:1.06s"><path class="m-blade" d="M1431.1,47.8 Q1429.1,35.9 1431.1,24.1"/><path class="m-leaf" d="M1431.1,28.1 q-9,-4 -12,-11 q8,0 12,11z"/><path class="m-leaf" d="M1431.1,32.1 q9,-3 13,-9 q-9,-1 -13,9z"/></g><path class="m-blade" style="--d:0.95s" d="M1487.3,49.6 Q1486.6,42.3 1484.6,37.4 M1489.5,49.6 Q1489.1,39.4 1487.8,32.6 M1491.7,49.6 Q1490.6,40.5 1487.5,34.4 M1493.9,49.6 Q1493.1,37.9 1490.6,30.2"/><g class="m-sprout" style="--d:1.09s"><path class="m-blade" d="M1501.7,50.0 Q1499.7,38.0 1501.7,26.0"/><path class="m-leaf" d="M1501.7,30.0 q-9,-4 -12,-11 q8,0 12,11z"/><path class="m-leaf" d="M1501.7,34.0 q9,-3 13,-9 q-9,-1 -13,9z"/></g><path class="m-blade" style="--d:0.98s" d="M1526.1,50.4 Q1527.7,37.6 1532.5,29.0 M1528.3,50.4 Q1529.7,38.4 1533.8,30.4 M1530.5,50.4 Q1531.4,38.9 1534.2,31.3 M1532.7,50.4 Q1531.9,39.4 1529.7,32.1"/><path class="m-blade" style="--d:1.02s" d="M1569.3,50.6 Q1570.1,38.2 1572.6,30.0 M1571.5,50.6 Q1571.6,35.9 1571.8,26.1 M1573.7,50.6 Q1574.8,41.3 1578.0,35.0 M1575.9,50.6 Q1577.3,38.7 1581.4,30.8 M1578.1,50.6 Q1577.2,39.9 1574.3,32.7"/><g class="m-sprout" style="--d:1.17s"><path class="m-blade" d="M1586.9,50.4 Q1584.9,39.8 1586.9,29.1"/><path class="m-leaf" d="M1586.9,33.1 q-9,-4 -12,-11 q8,0 12,11z"/><path class="m-leaf" d="M1586.9,37.1 q9,-3 13,-9 q-9,-1 -13,9z"/></g></svg>
+</header>
+
+<div id="srvBanner" class="warn hidden">
+  <b>Сервер HydroBrain не відповідає.</b> У терміналі в папці проєкту запустіть
+  <code>uvicorn server:app --port 8000</code> (не закривайте це вікно), а потім відкрийте в браузері
+  <b>http://localhost:8000</b> і натисніть Ctrl+F5.
+</div>
+<main>
+  <!-- ліва колонка: поля -->
+  <aside class="panel">
+    <div class="side-head"><h2>Мої поля</h2>
+      <button class="primary" style="white-space:nowrap" onclick="showNew()">+ Нове поле</button></div>
+    <ul class="fieldlist" id="fields"></ul>
+    <div class="empty muted" id="noFields"><svg><use href="#i-sprout"/></svg><span>Тут з'являться ваші поля й грядки. Додайте перше — це хвилина.</span></div>
+  </aside>
+
+  <section class="stack">
+    <!-- нове поле -->
+    <div class="panel hidden" id="newPanel">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+        <h2 style="margin:0;flex:1 1 auto">Нове поле</h2>
+        <div class="seg" style="flex:0 0 auto" role="group" aria-label="Режим">
+          <button id="mBeg" class="on" onclick="setMode('beginner')">Новачок</button>
+          <button id="mExp" onclick="setMode('expert')">Експерт</button>
+        </div>
+      </div>
+      <p class="muted small" style="margin:0 0 14px" id="modeHint"></p>
+      <div id="map"></div>
+      <div class="form-grid" style="margin-bottom:12px">
+        <label class="f"><span>Назва поля</span><input id="fname" placeholder="напр. Город біля хати"></label>
+      </div>
+      <div id="formBody"></div>
+      <div class="row" style="margin-top:16px;align-items:center"><button class="primary" style="flex:0 0 auto" onclick="createField()" id="createBtn">Створити поле</button>
+        <span class="muted" id="createMsg"></span></div>
+    </div>
+
+    <!-- вибране поле -->
+    <div class="hidden stack" id="fieldPanel">
+      <div class="panel">
+        <div class="field-head">
+          <div><h2 id="fTitle"></h2><ul class="facts" id="fSub"></ul></div>
+          <button class="primary" style="flex:0 0 auto" onclick="recommend()" id="recBtn">Отримати рекомендацію</button>
+        </div>
+        <div id="fWarn"></div>
+      </div>
+
+      <div class="panel hidden" id="recPanel"></div>
+
+      <div class="two">
+        <div class="panel">
+          <div class="card-icon"><svg><use href="#i-probe"/></svg><h2>Показ датчика</h2></div>
+          <div class="row">
+            <label class="f"><span>Вологість, % об.</span><input id="sTheta" type="number" step="0.1" placeholder="напр. 27"></label>
+            <label class="f"><span>Глибина, см</span><input id="sDepth" type="number" value="20"></label>
+            <button style="flex:0 0 auto" onclick="addSensor()">Додати</button>
+          </div>
+          <p class="hint">Система не вірить датчику сліпо — поєднує його з моделлю (фільтр Калмана).</p>
+          <div class="row" style="margin-top:12px;gap:8px">
+            <button style="flex:1" title="Оцінити θFC і θWP за накопиченими показами датчика" onclick="calibrateSoil()">Калібрувати ґрунт</button>
+            <button style="flex:1" title="Після сезону даних: донавчити ML-модель на даних цього поля" onclick="finetuneLocal()" id="btnFinetune">Донавчити на полі</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="card-icon"><svg><use href="#i-can"/></svg><h2>Записати полив</h2></div>
+          <div class="row">
+            <label class="f"><span>Норма, мм (= л/м²)</span><input id="iMm" type="number" step="0.5"></label>
+            <button style="flex:0 0 auto" onclick="addIrr()">Записати</button>
+          </div>
+          <p class="hint">Якщо полили більше чи менше за пораду — система це запам'ятає і врахує наступного разу.</p>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="card-icon"><svg><use href="#i-book"/></svg><h2>Журнал поля</h2></div>
+        <div id="events" class="muted"></div>
+      </div>
+    </div>
+
+    <div class="panel welcome" id="welcome">
+      <h2>Як почати</h2>
+      <p class="lede">Чотири кроки — від точки на карті до першого поливу.</p>
+      <ol class="stages">
+        <li>
+          <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 50c8-3 16 2 26 0s18-3 26 0" stroke="var(--soil)"/>
+            <path d="M32 44S20 31 20 23a12 12 0 0 1 24 0c0 8-12 21-12 21Z"/><circle cx="32" cy="23" r="4.5" fill="currentColor" stroke="none"/>
+            <path d="M14 57h6M28 57h10M46 57h5" stroke="var(--soil)" opacity=".6"/>
+          </svg>
+          <p>Натисніть «+ Нове поле», клацніть точку на карті, оберіть культуру, дату сівби й спосіб поливу.</p>
+        </li>
+        <li>
+          <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 40c8-3 16 2 26 0s18-3 26 0" stroke="var(--soil)"/>
+            <path d="M22 40V27"/><path d="M22 30c0-6-4-9-10-9 0 6 4 9 10 9Z"/><path d="M22 27c0-5 4-8 9-8 0 5-4 8-9 8Z"/>
+            <rect x="40" y="12" width="7" height="11" rx="2.5" stroke="var(--water)"/><path d="M43.5 23v32M43.5 46h4M43.5 51h4" stroke="var(--water)"/>
+          </svg>
+          <p>Додайте показ датчика вологості, якщо він є. Без нього теж можна — порада буде орієнтовною.</p>
+        </li>
+        <li>
+          <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 52c8-3 16 2 26 0s18-3 26 0" stroke="var(--soil)"/>
+            <path d="M28 52V22"/><path d="M28 36c0-8-6-12-14-12 0 8 6 12 14 12Z"/><path d="M28 28c0-8 6-13 14-13 0 8-6 13-14 13Z"/><path d="M28 44c0-5 4-8 10-8 0 5-4 8-10 8Z"/>
+            <path d="M50 22s-5 6-5 9.5a5 5 0 0 0 10 0c0-3.5-5-9.5-5-9.5Z" stroke="var(--water)"/>
+          </svg>
+          <p>Натисніть «Отримати рекомендацію»: поливати зараз, відкласти чи не поливати.</p>
+        </li>
+        <li>
+          <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10 26h22v20a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4Z"/><path d="M15 26v-4a6 6 0 0 1 12 0v4"/>
+            <path d="M32 31l14-10"/><path d="M44 17l6 6"/>
+            <path d="M52 28v3M49 33v3M54 35v3M51 41v3" stroke="var(--water)"/>
+            <path d="M6 56c8-3 16 2 26 0s18-3 26 0" stroke="var(--soil)"/>
+          </svg>
+          <p>Після поливу запишіть, скільки фактично полили, — наступна порада буде точнішою.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let mode = "beginner", schema = [], current = null, lastRec = null, map = null, marker = null;
+
+// ---------------- тема
+function isDark(){
+  const t=document.documentElement.dataset.theme;
+  if(t) return t==="dark";
+  return window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
+}
+function toggleTheme(){
+  const next = isDark() ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try{ localStorage.setItem("hb-theme", next); }catch(e){}
+}
+
+function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("show");clearTimeout(toast._t);toast._t=setTimeout(()=>e.classList.remove("show"),2600)}
+// Якщо сторінку відкрито як файл (file://), звертаємось до локального сервера напряму
+const API = location.protocol === "file:" ? "http://localhost:8000" : "";
+async function api(path, opt={}){
+  let r;
+  try{ r = await fetch(API + path, {headers:{"Content-Type":"application/json"}, ...opt}); }
+  catch(e){ serverDown(); throw new Error("сервер HydroBrain не відповідає"); }
+  let body; try{ body = await r.json(); }catch(e){ body = null; }
+  if(!r.ok) throw new Error((body && body.detail) ? (typeof body.detail==="string"?body.detail:JSON.stringify(body.detail)) : ("HTTP "+r.status));
+  return body;
+}
+window.addEventListener("unhandledrejection", event => { toast(event.reason?.message || "Не вдалося виконати дію"); event.preventDefault(); });
+function serverDown(){
+  const b=$("#srvBanner"); if(b) b.classList.remove("hidden");
+}
+function esc(s){return String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+const ico = (id, cls="") => `<svg class="${cls}" aria-hidden="true"><use href="#${id}"/></svg>`;
+
+// ---------------- поля
+async function loadFields(){
+  const list = await api("/fields_detailed");
+  const ul = $("#fields"); ul.innerHTML = "";
+  $("#noFields").classList.toggle("hidden", list.length>0);
+  list.forEach(f=>{
+    const li=document.createElement("li");
+    li.tabIndex=0;
+    li.innerHTML=`${ico("i-leaf","lf")}<span class="nm">${esc(f.name||f.field_id)}</span><small>${esc(cropName(f.crop))}</small>`;
+    if(current===f.field_id) li.classList.add("active");
+    li.onclick=()=>openField(f.field_id);
+    li.onkeydown=e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); openField(f.field_id); } };
+    ul.appendChild(li);
+  });
+  return list;
+}
+let catalog = {};
+function cropName(k){return (catalog.crops||{})[k]||k||""}
+
+// ---------------- нове поле
+function showNew(){
+  $("#welcome").classList.add("hidden"); $("#fieldPanel").classList.add("hidden");
+  $("#newPanel").classList.remove("hidden");
+  current=null; loadFields();
+  setMode(mode);
+  setTimeout(()=>{ try{ initMap(); }catch(e){ console.error(e); } }, 30);
+}
+function initMap(){
+  if(map){ map.invalidateSize(); return; }
+  if(typeof L === "undefined"){ $("#map").innerHTML='<p class="muted" style="padding:14px">Карта не завантажилась (немає інтернету) — введіть широту і довготу вручну.</p>'; return; }
+  map = L.map("map").setView([49.0, 31.3], 6);
+  // Тайли OSM блокують запити з localhost, тому — супутник Esri (зручно шукати поле) і схема CARTO
+  const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {maxZoom:19, attribution:"Супутник © Esri, Maxar, Earthstar Geographics"});
+  const labels = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+      {maxZoom:19, attribution:"Підписи © Esri"});
+  const scheme = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+      {maxZoom:19, subdomains:"abcd", attribution:"© OpenStreetMap contributors © CARTO"});
+  const hybrid = L.layerGroup([sat, labels]).addTo(map);
+  L.control.layers({"Супутник":hybrid, "Схема":scheme}, null, {position:"topright"}).addTo(map);
+  map.on("click", e=>{
+    const {lat,lng}=e.latlng;
+    if(marker) marker.setLatLng(e.latlng); else marker=L.marker(e.latlng).addTo(map);
+    const la=document.querySelector('[data-key="lat"]'), lo=document.querySelector('[data-key="lon"]');
+    if(la) la.value=lat.toFixed(5); if(lo) lo.value=lng.toFixed(5);
+  });
+}
+async function setMode(m){
+  mode=m; $("#mBeg").classList.toggle("on",m==="beginner"); $("#mExp").classList.toggle("on",m==="expert");
+  $("#modeHint").textContent = m==="beginner"
+    ? "Мінімум полів — решту (ґрунт, рельєф, геологію, погоду) система визначить сама за точкою на карті."
+    : "Можна задати будь-який із параметрів. Порожні поля система заповнить автоматично (з карт і довідників).";
+  try{
+    schema = await api("/schema/"+m);
+    renderForm();
+  }catch(e){
+    console.error(e);
+    $("#formBody").innerHTML=`<p class="err">Не вдалося побудувати форму: ${esc(e.message)}. Оновіть сторінку (Ctrl+F5); якщо не допоможе — надішліть цей текст.</p>`;
+  }
+}
+function inputFor(p){
+  const k=p.key, d=p.default;
+  if(p.kind==="select"){
+    const autoFirst = p.default==null || !!p.auto;     // значення, яке система може визначити сама, не нав'язуємо
+    const opts=Object.entries(p.options).map(([v,t])=>`<option value="${esc(v)}" ${(!autoFirst&&v===d)?"selected":""}>${esc(t)}</option>`).join("");
+    return `<select data-key="${k}" data-kind="select">${autoFirst&&!(k in p.options&&false)&&!("auto" in p.options)?'<option value="" selected>— авто —</option>':""}${opts}</select>`;
+  }
+  if(p.kind==="bool") return `<select data-key="${k}" data-kind="bool"><option value="">— авто —</option><option value="true" ${d===true?"selected":""}>так</option><option value="false" ${d===false?"selected":""}>ні</option></select>`;
+  if(p.kind==="date") return `<input type="date" data-key="${k}" data-kind="date">`;
+  if(p.kind==="list") return `<input data-key="${k}" data-kind="list" placeholder='JSON, напр. ${k==="preferred_hours"?"[4,5,6,20,21]":'[{"time":"2026-06-05T08:00","dose_kg_ha":150,"type":"urea"}]'}'>`;
+  const step = p.kind==="int" ? "1" : "any";
+  const ph = (p.auto?("авто: "+p.auto):(d!=null?("типово "+d):""));
+  return `<input type="number" step="${step}" data-key="${k}" data-kind="${p.kind}" placeholder="${esc(ph)}" ${p.min!=null?`min="${p.min}"`:""} ${p.max!=null?`max="${p.max}"`:""}>`;
+}
+function renderForm(){
+  const groups={};
+  schema.forEach(p=>{(groups[p.group_name]=groups[p.group_name]||[]).push(p)});
+  let html="";
+  const names=Object.keys(groups);
+  names.forEach((g,i)=>{
+    const fields=groups[g].map(p=>`<label class="f" title="${esc(p.effect_uk||"")}"><span>${esc(p.name_uk)}${p.unit?" ("+esc(p.unit)+")":""} <b>${esc(p.symbol)}</b></span>${inputFor(p)}</label>`).join("");
+    if(mode==="beginner") html+=`<div class="form-grid">${fields}</div>`;
+    else html+=`<details class="group" ${i<2?"open":""}><summary>${esc(g)}</summary><div class="form-grid" style="padding:8px 0">${fields}</div></details>`;
+  });
+  $("#formBody").innerHTML=html;
+  const today=new Date(); const sd=document.querySelector('[data-key="sowing_date"]');
+  if(sd) sd.value=`${today.getFullYear()}-04-25`;
+  if(marker){const {lat,lng}=marker.getLatLng(); document.querySelector('[data-key="lat"]').value=lat.toFixed(5); document.querySelector('[data-key="lon"]').value=lng.toFixed(5);}
+}
+function collect(){
+  const out={};
+  document.querySelectorAll("#formBody [data-key]").forEach(el=>{
+    const v=el.value; if(v===""||v==null) return;
+    const k=el.dataset.key, kind=el.dataset.kind;
+    if(kind==="float"||kind==="int") out[k]=Number(v);
+    else if(kind==="bool") out[k]=(v==="true");
+    else if(kind==="list"){ try{ out[k]=JSON.parse(v);}catch(e){ throw new Error("Поле «"+k+"»: некоректний JSON"); } }
+    else out[k]=v;
+  });
+  return out;
+}
+async function createField(){
+  const btn=$("#createBtn"); let inputs;
+  try{ inputs=collect(); }catch(e){ $("#createMsg").innerHTML=`<span class="err">${esc(e.message)}</span>`; return; }
+  if(inputs.lat==null||inputs.lon==null){ $("#createMsg").innerHTML='<span class="err">Клацніть точку поля на карті (або введіть широту/довготу).</span>'; return; }
+  btn.disabled=true; $("#createMsg").textContent="Визначаю ґрунт, рельєф і геологію…";
+  try{
+    const f=await api("/fields",{method:"POST",body:JSON.stringify({inputs,mode,name:$("#fname").value||null})});
+    $("#createMsg").textContent=""; toast("Поле створено");
+    await openField(f.field_id);
+  }catch(e){ $("#createMsg").innerHTML=`<span class="err">${esc(e.message)}</span>`; }
+  btn.disabled=false;
+}
+
+// ---------------- відкрите поле
+const SOIL_LABEL={theta_fc:"θ польова вологоємність",theta_wp:"θ в'янення",awc_mm_per_m:"Доступна волога, мм/м",texture_uk:"Текстура",hsg:"Гідрогрупа",ksat_mm_h:"Ksat, мм/год"};
+async function openField(fid){
+  current=fid; lastRec=null;
+  $("#welcome").classList.add("hidden"); $("#newPanel").classList.add("hidden");
+  $("#fieldPanel").classList.remove("hidden"); $("#recPanel").classList.add("hidden");
+  await loadFields();
+  const info=await api(`/fields/${fid}/info`);
+  $("#demoBadge").style.display = info.offline_demo ? "inline-block" : "none";
+  // 1.9: донавчання запускається автоматично; ручна кнопка — лише для режиму експерта
+  if($("#btnFinetune")) $("#btnFinetune").style.display = info.mode==="expert" ? "" : "none";
+  const s=info.summary, h=info.soil_hydraulics||{};
+  $("#fTitle").textContent=info.name||fid;
+  const facts=[
+    ["", cropName(s.crop)],
+    ["сівба", s.sowing_date],
+    ["полив", (catalog.irrigation_methods||{})[s.irrigation_method]||s.irrigation_method],
+    ["ґрунт", `${h.texture_uk||""}, ${h.awc_mm_per_m??"?"} мм/м`],
+    ["порода", (catalog.geology||{})[s.geo]||s.geo],
+    ["ухил", `${s.slope_deg??0}°`],
+    ["", `${Number(s.lat).toFixed(3)}, ${Number(s.lon).toFixed(3)}`],
+  ];
+  $("#fSub").innerHTML=facts.filter(f=>f[1]!=null&&f[1]!=="").map(([k,v])=>`<li class="num">${k?`<span>${esc(k)}</span> `:""}${esc(v)}</li>`).join("");
+  $("#fWarn").innerHTML=(info.warnings||[]).length?`<div class="warn">${info.warnings.map(esc).join("<br>")}</div>`:"";
+  renderEvents(info.events);
+}
+function fmtT(iso){ if(!iso) return ""; const d=new Date(iso); return d.toLocaleString("uk-UA",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}); }
+function renderEvents(ev){
+  const rows=[];
+  (ev.irrigation||[]).forEach(e=>rows.push([e.time,"k-irr",`полив ${e.gross_mm} мм`]));
+  (ev.sensor||[]).forEach(e=>rows.push([e.time,"k-sen",`датчик ${(e.theta>1?e.theta:e.theta*100).toFixed(1)}% на ${e.depth_cm} см`]));
+  (ev.fertilizer||[]).forEach(e=>rows.push([e.time,"k-fer",`добриво ${e.dose_kg_ha} кг/га (${e.type})`]));
+  rows.sort((a,b)=>String(b[0]).localeCompare(String(a[0])));
+  $("#events").innerHTML = rows.length
+    ? `<ul class="events">${rows.slice(0,12).map(r=>`<li><time>${fmtT(r[0])}</time><span class="${r[1]}">${esc(r[2])}</span></li>`).join("")}</ul>`
+    : "Подій ще немає — тут з'являться поливи й покази датчика.";
+}
+async function addSensor(){
+  const v=parseFloat($("#sTheta").value); if(isNaN(v)) return toast("Введіть вологість");
+  await api(`/fields/${current}/sensor`,{method:"POST",body:JSON.stringify({theta:v,depth_cm:parseFloat($("#sDepth").value)||null})});
+  $("#sTheta").value=""; toast("Показ датчика додано"); openField(current);
+}
+async function addIrr(){
+  const v=parseFloat($("#iMm").value); if(isNaN(v)) return toast("Введіть норму");
+  const rec = lastRec && lastRec.amount ? lastRec.amount.gross_mm : null;
+  const r=await api(`/fields/${current}/irrigation`,{method:"POST",body:JSON.stringify({amount_mm:v,recommended_mm:rec})});
+  toast(r.learned ? "Полив записано — система врахує вашу правку" : "Полив записано");
+  openField(current);
+}
+
+// ---------------- рекомендація
+const ACT={irrigate_now:{c:"var(--go)",i:"i-drop"},postpone:{c:"var(--wait)",i:"i-dawn"},skip:{c:"var(--skip)",i:"i-sprout"},
+           measure:{c:"var(--wait)",i:"i-probe"}};
+async function recommend(){
+  const btn=$("#recBtn"); btn.disabled=true; btn.textContent="Рахую…";
+  try{ lastRec=await api(`/fields/${current}/recommendation`,{method:"POST"}); renderRec(lastRec); }
+  catch(e){ $("#recPanel").classList.remove("hidden"); $("#recPanel").innerHTML=`<p class="err">${esc(e.message)}</p>`; }
+  btn.disabled=false; btn.textContent="Отримати рекомендацію";
+}
+function renderRec(r){
+  const a=ACT[r.action]||ACT.skip, m=r.moisture, am=r.amount;
+  if(r.action==="measure"){            // 1.8: рекомендації без датчика вимкнено налаштуванням застосунку
+    $("#recPanel").classList.remove("hidden");
+    $("#recPanel").innerHTML=`<div class="verdict" style="--c:${a.c}"><div class="icon">${ico(a.i)}</div>
+      <div><div class="t">${esc(r.headline)}</div><div class="w">${esc(r.time_local)}</div></div></div>
+      <p class="summary">${esc((r.details||[]).join(" "))}</p>${guidanceBlock(r.guidance)}${sourceBlock(r.forecast_core)}`;
+    return;
+  }
+  if(am) $("#iMm").value=r.orientative && am.range_mm ? Math.round((am.range_mm[0]+am.range_mm[1])/2) : am.gross_mm;
+  const when = r.action==="postpone" && r.when_local ? `полити ≈ ${esc(r.when_local)}` :
+               r.action==="irrigate_now" ? "зараз" : `перевірити знову через ~${r.next_check_hours} год`;
+  // шкала вологості
+  const lo=m.theta_wp, hi=Math.max(m.theta_fc*1.08, m.theta+m.theta_sigma);
+  const pos=v=>Math.max(0,Math.min(100,(v-lo)/(hi-lo)*100));
+  const rawTheta = m.theta_fc - m.raw_mm/(1000*m.root_depth_m);
+  const gauge=`<div class="gauge" role="img" aria-label="Вологість ${(m.theta*100).toFixed(1)}%">
+      <div class="band" style="left:${pos(m.theta-m.theta_sigma)}%;width:${pos(m.theta+m.theta_sigma)-pos(m.theta-m.theta_sigma)}%"></div>
+      <div class="fill" style="width:calc(${pos(m.theta)}% - 8px)"></div>
+      <div class="raw" style="left:${pos(rawTheta)}%"></div>
+      <div class="lbl" style="left:0;transform:none">в'янення ${(lo*100).toFixed(0)}%</div>
+      <div class="lbl stress" style="left:${pos(rawTheta)}%">поріг стресу</div>
+      <div class="lbl" style="left:${pos(m.theta_fc)}%">FC ${(m.theta_fc*100).toFixed(0)}%</div></div>`;
+  const tiles=[];
+  if(am && r.orientative && am.range_mm){ tiles.push([am.range_mm[0]+"–"+am.range_mm[1]+" мм","орієнтовна норма",1]); }
+  if(am && am.cycles && am.cycles.cycles>1){ tiles.push([am.cycles.cycles+" циклів, до "+am.cycles.on_min+" хв",
+      "останній "+(am.cycles.last_on_min??am.cycles.on_min)+" хв; пауза "+am.cycles.soak_min+" хв (разом ≈ "+am.cycles.total_h+" год)",1]); }
+  else if(am){ tiles.push([am.gross_mm+" мм","норма (л/м²)",1]); if(am.m3_total!=null) tiles.push([am.m3_total+" м³","на всю площу"]); if(am.duration_min!=null) tiles.push([fmtMin(am.duration_min),"тривалість"]); }
+  tiles.push([(m.theta*100).toFixed(1)+"%","вологість ±"+(m.theta_sigma*100).toFixed(1)]);
+  tiles.push([m.available_water_pct+"%","доступної води"]);
+  tiles.push([r.today.eto_local_mm_day+" мм","ETo за добу"]);
+  const has48 = !r.risk.probability_horizons_available || r.risk.probability_horizons_available.includes(48);
+  tiles.push(has48 ? [Math.round(r.risk.p_stress_48h*100)+"%","ризик стресу 48 год"] : ["—","для ризику за 48 год бракує прогнозу"]);
+  const rmax=Math.max(5,...r.forecast_days.map(d=>+d.rain_mm||0));
+  const fd=r.forecast_days.map(d=>`<tr><td>${esc(d.date)}</td><td><span class="rain"><i style="width:${Math.min(100,(+d.rain_mm||0)/rmax*100)}%"></i></span>${d.rain_mm}</td><td>${d.rain_prob_max==null?"—":Math.round(d.rain_prob_max)+"%"}</td><td>${d.eto_mm}</td><td>${d.tmin}…${d.tmax}°</td></tr>`).join("");
+  $("#recPanel").classList.remove("hidden");
+  $("#recPanel").innerHTML=`
+    <div class="verdict" style="--c:${a.c}"><div class="icon">${ico(a.i)}</div>
+      <div><div class="t">${esc(r.headline)}</div><div class="w"><b>${when}</b>, впевненість ${esc(r.confidence_label)} <span class="num">(${esc(r.time_local)})</span></div></div></div>
+    <p class="summary">${esc(r.summary.slice(r.headline.length).replace(/^\.\s*/,""))}</p>
+    ${r.orientative?`<div class="warn"><b>Орієнтовна рекомендація без датчика.</b> Норму наведено діапазоном; перед поливом перевірте вологість ґрунту.</div>`:""}
+    ${guidanceBlock(r.guidance)}
+    ${sourceBlock(r.forecast_core)}
+    <div class="tiles">${tiles.map(t=>`<div class="tile${t[2]?" lead":""}"><b>${esc(t[0])}</b><span>${esc(t[1])}</span></div>`).join("")}</div>
+    <h3>Вологість кореневої зони (${m.root_depth_m} м)</h3>${gauge}
+    <div class="two">
+      <div><h3>Чому так</h3><ul class="reasons">${r.details.map(d=>`<li>${esc(d)}</li>`).join("")}</ul></div>
+      <div><h3>Прогноз дефіциту води, мм</h3>${chart(r.trajectory, m.taw_mm)}
+        <div class="legend"><span><i style="background:var(--water)"></i>медіана без поливу</span><span><i style="background:var(--water);opacity:.3;height:8px"></i>10–90% сценаріїв</span><span><i style="background:var(--sun)"></i>поріг стресу</span></div></div>
+    </div>
+    <h3>Погода</h3>
+    <div style="overflow-x:auto"><table><tr><th>День</th><th>Опади, мм</th><th>Ймовірність</th><th>ETo, мм</th><th>T</th></tr>${fd}</table></div>
+    <details class="tech" style="margin-top:14px"><summary>Технічні деталі</summary>
+      <p class="muted small num">Стадія: ${esc(r.today.stage)} (DVS ${r.today.dvs}); Kcb ${r.today.kcb}; p ${r.today.p}; K_micro ${r.today.k_micro}; ECe ${r.today.ece} дСм/м;
+      дефіцит ${m.depletion_mm}±${m.depletion_sigma_mm} мм із TAW ${m.taw_mm} (RAW ${m.raw_mm}); зміщення датчика ${m.sensor_bias};
+      навчені множники: Kc поля ${r.today.k_field}, норма ×${am?am.user_multiplier:"—"}, MAD ×${r.today.mad_factor}</p>
+      ${(r.notes||[]).length?`<div class="warn">${r.notes.map(esc).join("<br>")}</div>`:""}
+    </details>`;
+}
+function guidanceBlock(g){
+  if(!g) return "";
+  return `<div class="note">
+    <h3>Як система рахує це поле: ${esc(g.title)}</h3>
+    <div>${esc(g.message)}</div>
+    ${g.event?`<div class="muted small" style="margin-top:4px">${esc(g.event)}</div>`:""}
+    <div class="step"><b>Наступний крок:</b> ${esc(g.next_step)}</div>
+  </div>`;
+}
+function sourceBlock(fc){
+  if(!fc) return "";
+  const st=fc.state||{}, lag=st.lag_days!=null?Math.round(st.lag_days):null;
+  const SRC={sensor:"датчик (свіжий показ)",
+             sensor_stale:`датчик ${lag??"?"} діб тому, прокручено ML-моделлю`,
+             reanalysis:`реаналіз ERA5-Land у цій точці${lag!=null?` (≈ ${lag} діб тому)`:""}, без датчика`,
+             model_only:"лише фізична модель і сезонне припущення"};
+  const CORE={ml:"ML-модель (навчена на даних України) + фізика для поливу",
+              "ml+local":"ML-модель, донавчена на даних цього поля, + фізика для поливу",
+              physics:"фізична модель FAO-56"};
+  const weak = st.mode!=="sensor";
+  return `<div class="${weak?"warn":"src"}">
+    <b>Стан ґрунту:</b> ${esc(SRC[st.mode]||st.mode||"—")}; <b>прогноз:</b> ${esc(CORE[fc.core]||fc.core)}
+    ${fc.reason?`<br><span class="small">${esc(fc.reason)}</span>`:""}
+    ${fc.domain_note?`<br><span class="small">${esc(fc.domain_note)}</span>`:""}
+  </div>`;
+}
+async function calibrateSoil(){
+  const r=await api(`/fields/${current}/calibrate_soil`,{method:"POST"});
+  toast(r.applied?`Ґрунт відкалібровано: θFC ${(r.theta_fc*100).toFixed(1)}%, θWP ${(r.theta_wp*100).toFixed(1)}%`:
+        "Калібрування не змінило параметри: "+((r.notes||[]).slice(-1)[0]||""));
+  openField(current);
+}
+async function finetuneLocal(){
+  const r=await api(`/fields/${current}/finetune_local`,{method:"POST"});
+  toast(r.enabled?"Модель донавчено на даних поля":"Донавчання поки не ввімкнено: "+(((r.horizons||{})["1"]||{}).reason||r.reason||""));
+}
+function fmtMin(x){ if(x<90) return x+" хв"; return (x/60).toFixed(1).replace(".",",")+" год"; }
+function chart(t, taw){
+  const W=460,H=180,pl=34,pr=8,pt=10,pb=22, n=t.dr_median.length;
+  const ymax=Math.max(taw||0, ...t.dr_p90, ...t.raw_median)*1.05, ymin=Math.min(0,...t.dr_p10);
+  const x=i=>pl+(W-pl-pr)*i/Math.max(1,n-1), y=v=>pt+(H-pt-pb)*(1-(v-ymin)/(ymax-ymin));
+  const line=a=>a.map((v,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const band=t.dr_p90.map((v,i)=>`${i?"L":"M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("")+
+             t.dr_p10.slice().reverse().map((v,j)=>`L${x(n-1-j).toFixed(1)},${y(v).toFixed(1)}`).join("")+"Z";
+  let ticks="";
+  for(let h=0;h<n;h+=24) ticks+=`<line x1="${x(h)}" x2="${x(h)}" y1="${pt}" y2="${H-pb}" stroke="var(--line)" stroke-dasharray="2 4"/><text x="${x(h)+3}" y="${H-6}">+${h} год</text>`;
+  const yt=[0,Math.round(ymax/2),Math.round(ymax)].map(v=>`<text x="2" y="${y(v)+4}">${v}</text>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Прогноз дефіциту">
+    ${ticks}${yt}
+    ${taw?`<line x1="${pl}" x2="${W-pr}" y1="${y(taw)}" y2="${y(taw)}" stroke="var(--soil)" stroke-dasharray="3 3" opacity=".7"/><text x="${W-pr-56}" y="${y(taw)-4}">в'янення</text>`:""}
+    <path d="${band}" fill="var(--water)" opacity=".18"/>
+    <path d="${line(t.raw_median)}" fill="none" stroke="var(--sun)" stroke-width="2" stroke-linecap="round"/>
+    <path d="${line(t.dr_median)}" fill="none" stroke="var(--water)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+// ---------------- старт
+(async()=>{
+  try{ catalog=await api("/catalog"); }catch(e){}
+  const list=await loadFields();
+  if(list.length) openField(list[0].field_id);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2047 @@
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,3 +1,7 @@
++# 1.11.1 — перевірка від 2026-10-29
++
++Валідація, захист записів, відтворення подій, ризики й горизонти, калібрування та точний план циклів: див. `REVIEW_FIXES.md`.
++
+ # Журнал змін HydroBrain
+ 
+ Тут записується кожна правка: що виправили, що додали, що прибрали і чому. Формат кожного пункту:
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,6 @@
+ # HydroBrain — «мозок» системи поливу
++
++**Виправлена версія 1.11.1.** Перелік змін, актуальний запуск і межі перевірки: [REVIEW_FIXES.md](REVIEW_FIXES.md). PDF, результати експериментів і наведені нижче числові порівняння належать вихідній версії 1.11; для 1.11.1 вони не перераховувалися.
+ 
+ Програма вирішує: **поливати зараз / не поливати / відкласти**. Вона також рахує норму поливу і коротко пояснює, чому дійшла такого висновку.
+ Усередині працює погодинний водний баланс кореневої зони за FAO‑56. До нього додано всі параметри зі схеми проєкту, прогноз погоди
+@@ -27,7 +29,7 @@
+ ## Встановлення
+ ```bash
+ pip install -r requirements.txt        # мінімум: numpy, requests, tzdata
+-python -m pytest -q tests/             # 75 автотестів: FAO-56, баланс, рішення, навчання, ML-ядро, режими без датчика, домен, рецензія, калібрування
++python -m pytest -q tests/             # автотести: FAO-56, баланс, рішення, навчання, ML-ядро, режими без датчика, домен, рецензія, калібрування
+ python -m hydrobrain demo              # демонстрація без інтернету
+ python -m hydrobrain demo --live --lat 49.30 --lon 28.30   # з реальними API (потрібен інтернет)
+ python -m hydrobrain diag --lat 49.30 --lon 28.30          # перевірити кожне джерело даних окремо
+@@ -53,15 +55,15 @@
+ ## Простий веб-інтерфейс
+ ```bash
+ pip install fastapi uvicorn
+-uvicorn server:app --port 8000          # відкрити в браузері: http://localhost:8000/
+-HYDRO_OFFLINE=1 uvicorn server:app      # демо без інтернету (синтетична погода)
++python -m uvicorn server:app --port 8000          # відкрити в браузері: http://localhost:8000/
++HYDRO_OFFLINE=1 python -m uvicorn server:app      # демо без інтернету (синтетична погода)
+ ```
+ Інтерфейс (`ui/index.html`) — це звичайна сторінка, що працює через HTTP API нижче. Там можна вибрати точку поля на карті,
+ перемкнути режим «Новачок / Експерт», додати показ датчика чи записати полив і отримати рекомендацію з графіком прогнозу.
+ 
+ ## HTTP API (для готового інтерфейсу)
+ ```bash
+-uvicorn server:app --port 8000          # документація: http://localhost:8000/docs
++python -m uvicorn server:app --port 8000          # документація: http://localhost:8000/docs
+ ```
+ | Метод | Шлях | Що робить |
+ |---|---|---|
+--- /dev/null
++++ b/REVIEW_FIXES.md
+@@ -0,0 +1,63 @@
++# HydroBrain 1.11.1 — перевірка та виправлення
++
++Дата: 29 жовтня 2026 року. Основа: наданий `final.zip`, вкладений `hydrobrain_v1.11.zip`.
++
++## Що виправлено
++
++1. **Валідація до збереження поля.** Перевіряються числові межі та скінченність, цілі значення горизонту й кількості сценаріїв, режими, довідники, дати, булеві параметри, списки годин, калібрування датчика й події добрив. Відхиляються θFC ≤ θWP та сума піску і глини > 100%. Для координат дозволений світовий діапазон; попередження про домен України збережене.
++2. **Валідація подій.** Відхиляються від’ємна/нескінченна вологість, значення понад 100%, недопустима глибина, нульова/від’ємна норма поливу та некоректні добрива. Не можна одночасно передати `amount_mm` і `volume_m3`.
++3. **HTTP-помилки.** Відсутнє поле повертає 404, некоректні значення — 400; це працює також для PATCH та запису подій. Збережена стандартна валідація структури запиту FastAPI (422).
++4. **Ідентифікатор поля.** Заборонено вихід за каталог даних через `../`, абсолютні шляхи та роздільники. Створення поля з уже наявним ідентифікатором більше не перезаписує його.
++5. **Одночасні записи.** Оновлення параметрів, подій, стану та моделей одного поля серіалізуються також при використанні Python API. Використано повторно вхідне блокування, сумісне з HTTP-обгорткою. Спільний CSV навчання має окреме блокування від дублювання заголовка.
++6. **Майбутні покази.** Не визначають свіжість датчика, масштаб та поточний профіль ґрунту й не потрапляють у локальні мітки до моменту спостереження.
++7. **Пізно внесені події.** Якщо показ, полив або добриво стосуються вже змодельованого часу, стан скидається і відтворюється з історії. Раніше подія могла ігноруватися або прикладатися до невідповідної години. Історія відтворюється в межах наявного вікна погоди (до 60 діб при скиданні).
++8. **Повторна рекомендація.** Повторні запити за ту саму годину не вичерпують ліміт очікування дощу. Результат відкидання показу фільтром зберігається між запитами.
++9. **Зміна параметрів.** Скидання стану поширено на зміни калібрування, глибини датчика, коренів і місткості ґрунту. Скидається маркер попереднього засвоєння реаналізу. При зміні контексту скидаються локальна модель і журнал її ознак; при зміні координат — також кеш кліматології ERA5-Land. Редагування видимих параметрів новачком зберігає раніше встановлені експертні параметри.
++10. **Довільний горизонт.** Усунено `KeyError` для горизонтів на кшталт 36 годин. Для 48-годинного ризику при коротшому прогнозі повертається `null`, а інтерфейс показує відсутність достатніх даних.
++11. **Калібрування ризику.** Крива для 48 годин більше не застосовується до 12, 24 та 72 годин. Її застосування обмежено перевіреним сценарієм: кукурудза, крапельний полив, домен України, достатня довжина прогнозу. Інші поля ризику — сирі частки Монте-Карло; `calibrated_horizons` явно повідомляє `[48]`. Через різне калібрування сирі значення інших горизонтів не слід порівнювати з каліброваним 48-годинним як одну криву ймовірності. Для порівняння використовуйте `*_raw`.
++12. **Повторне навчання калібратора.** `ds/stage4/pstress_calibration.py` вимикає встановлене калібрування під час збору навчальних імовірностей. Це усуває повторне калібрування вже скоригованих значень при перезапуску.
++13. **Полив циклами.** Останній цикл може бути неповним. Додано `last_on_min`, `last_cycle_mm`, `duration_min`. Загальна тривалість та пояснення відповідають остаточній нормі після її зменшення. Інтерфейс показує тривалість останнього циклу. Усунено втрату точності через округлення обсягу перед обчисленням тривалості.
++14. **Час прогнозних подій.** Усунено зсув на одну годину між індексом прогнозу і `postpone_hours`; враховано експертний `tz_offset_h`. Пояснення ризику використовують фактичний горизонт рішення.
++15. **Погодний ряд.** Перевіряються наявність, послідовність годин, покриття поточного часу, мінімум прогнозу та придатність основних метеорядів. Неповний ансамбль більше не доповнюється вигаданими нульовими опадами — використовується резервний механізм прогнозу.
++16. **Прокрутка ML-стану.** Кроки по 24 години більше не виходять за поточний час при залишку 23,5–24 години; враховується також залишок менший за годину.
++17. **Інтерфейс і встановлення.** Помилки асинхронних дій показуються користувачу. Версію API узгоджено з пакетом. `scikit-learn==1.8.0` відповідає версії збережених моделей. Додано HTTP-тестову залежність і окремі залежності для досліджень/генерації документації.
++
++## Запуск
++
++Перевірене середовище — Python 3.12, scikit-learn 1.8.0. Рекомендовано окреме віртуальне середовище.
++
++```bash
++python3 -m venv .venv
++source .venv/bin/activate
++python -m pip install -r requirements.txt
++python -m pytest -q tests
++python -m uvicorn server:app --host 127.0.0.1 --port 8000
++```
++
++Відкрити http://localhost:8000/ . Для Windows: `.venv\Scripts\activate` замість `source`.
++
++Демонстрація без зовнішніх сервісів:
++
++```bash
++HYDRO_OFFLINE=1 python -m uvicorn server:app --host 127.0.0.1 --port 8000
++```
++
++Windows PowerShell:
++
++```powershell
++$env:HYDRO_OFFLINE="1"
++python -m uvicorn server:app --host 127.0.0.1 --port 8000
++```
++
++Консольне демо: `python -m hydrobrain demo`.
++Дослідницькі залежності: `python -m pip install -r requirements-research.txt`.
++
++## Межі перевірки
++
++- Застосунок перевірявся локально, без звернень до живих Open-Meteo, SoilGrids та геологічних сервісів. Перевірено контракт API, роздачу HTML/Leaflet, сценарій створення поля → показ датчика → рекомендація → полив → нова рекомендація та завантаження/прогнозування всіх восьми ML-моделей.
++- Перевірено синтаксис JavaScript; візуальне тестування у браузері не проводилося.
++- Блокування захищають потоки одного процесу. Запускайте сервер з одним worker; багатопроцесний/багатокористувацький хостинг потребує спільної БД, міжпроцесних блокувань та автентифікації.
++- Файли PDF, графіки й таблиці експериментів з оригінального архіву збережені як матеріали версії 1.11. Повний бектест і перенавчання на первинних дослідницьких даних не виконувалися. Старі числові результати не є результатами нового прогону 1.11.1.
++- Виправлення програмних помилок не замінює перевірку агрономічної точності на реальному полі. Обмеження навчання та перенесення моделей з вихідної документації зберігаються.
++
++Результат фінального тестового прогону див. у `VERIFICATION.txt`.
+--- /dev/null
++++ b/VERIFICATION.txt
+@@ -0,0 +1,18 @@
++HydroBrain 1.11.1 — 2026-10-29
++
++Environment: Python 3.12; scikit-learn 1.8.0; Linux.
++Command: OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python -m pytest -q tests
++
++........................................................................ [ 54%]
++............................................................             [100%]
++=============================== warnings summary ===============================
++tests/test_review_1111.py::test_http_contract_and_offline_flow
++  /root/.local/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
++    from starlette.testclient import TestClient as TestClient  # noqa
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++132 passed, 1 warning in 52.07s
++
++Additional checks: Python compileall passed; node --check for embedded UI JavaScript passed; offline CLI demo completed.
++Live external API availability, visual browser QA, scientific model retraining and full research backtests were not run.
++The test warning is an installed Starlette test-client deprecation notice.
+--- a/ds/stage4/pstress_calibration.py
++++ b/ds/stage4/pstress_calibration.py
+@@ -46,6 +46,7 @@
+     for y in c.YEARS:
+         P = c.resolve_params(meta["lat"], meta["lon"], meta["elevation"], sowing=f"{y}-04-25")
+         P["mc_samples"] = N_MC
++        P["pstress_calibration"] = False  # fit against raw MC probabilities, including on reruns
+         eng = WaterBalanceEngine(P)
+         hy = c.load_site_year(name, y)
+         if not any(k.endswith("_l1") for k in hy.columns):
+--- a/hydrobrain/__init__.py
++++ b/hydrobrain/__init__.py
+@@ -8,5 +8,5 @@
+ from .params import CATALOG, GROUP_NAMES, input_schema
+ from .sources import DataSources, SourceError
+ 
+-__version__ = "1.11.0"
++__version__ = "1.11.1"
+ __all__ = ["HydroBrain", "DataSources", "SourceError", "CATALOG", "GROUP_NAMES", "input_schema"]
+--- a/hydrobrain/brain.py
++++ b/hydrobrain/brain.py
+@@ -18,6 +18,8 @@
+ import json
+ import math
+ import os
++import re
++from functools import wraps
+ import threading
+ import uuid
+ from datetime import date, datetime, timedelta, timezone
+@@ -45,6 +47,26 @@
+ 
+ _LOCKS: dict = {}
+ _LOCKS_GUARD = threading.Lock()
++
++
++def _locked(method):
++    @wraps(method)
++    def wrapped(self, fid, *args, **kwargs):
++        with self.lock(fid):
++            return method(self, fid, *args, **kwargs)
++    return wrapped
++
++
++def _number(value, name, minimum=0.0, maximum=None, positive=False):
++    try:
++        if isinstance(value, bool):
++            raise ValueError
++        v = float(value)
++    except (TypeError, ValueError, OverflowError):
++        raise ValueError(f"{name}: потрібне число") from None
++    if not math.isfinite(v) or v < minimum or (positive and v == 0) or (maximum is not None and v > maximum):
++        raise ValueError(f"{name}: недопустиме значення")
++    return v
+ 
+ 
+ def _utc(dt) -> datetime:
+@@ -110,6 +132,8 @@
+ 
+     # ------------------------------------------------------------------ збереження
+     def _path(self, fid):
++        if not isinstance(fid, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", fid):
++            raise ValueError("Некоректний ідентифікатор поля")
+         return os.path.join(self.data_dir, "fields", f"{fid}.json")
+ 
+     def load_field(self, fid) -> dict:
+@@ -126,8 +150,9 @@
+ 
+     def lock(self, fid):
+         """Блокування поля в межах процесу (для HTTP-сервера з кількома потоками)."""
++        key = os.path.abspath(self._path(fid))
+         with _LOCKS_GUARD:
+-            return _LOCKS.setdefault(fid, threading.Lock())
++            return _LOCKS.setdefault(key, threading.RLock())
+ 
+     def list_fields(self):
+         return [p[:-5] for p in os.listdir(os.path.join(self.data_dir, "fields")) if p.endswith(".json")]
+@@ -153,6 +178,9 @@
+         P, prov, warnings = res.resolve(inputs, mode)
+         eng = WaterBalanceEngine(P)
+         fid = field_id or uuid.uuid4().hex[:10]
++        self._path(fid)
++        if os.path.exists(self._path(fid)):
++            raise ValueError("Поле з таким ідентифікатором уже існує")
+         f = dict(field_id=fid, name=name or inputs.get("name") or fid, mode=mode, inputs=inputs,
+                  params=P, provenance=prov, warnings=warnings, soil_hydraulics=eng.summary(),
+                  created=datetime.now(timezone.utc).isoformat(), state=None,
+@@ -164,11 +192,18 @@
+         return dict(field_id=fid, params=P, provenance=prov, warnings=warnings,
+                     soil_hydraulics=f["soil_hydraulics"])
+ 
++    @_locked
+     def update_params(self, fid, overrides: dict, mode=None):
+         f = self.load_field(fid)
+         mode = mode or f["mode"]
+-        inputs = {**f["inputs"], **overrides}
+-        P, prov, warnings = paramsm.Resolver(self.sources).resolve(inputs, mode)
++        paramsm.validate_mode(mode)
++        if not isinstance(overrides, dict):
++            raise ValueError("Зміни параметрів мають бути об’єктом")
++        # Keep existing expert inputs when a beginner edits only visible fields.
++        allowed = {p.key for p in paramsm.CATALOG if mode == "expert" or p.beginner}
++        edits = {k: v for k, v in overrides.items() if k in allowed}
++        inputs = {**f["inputs"], **edits}
++        P, prov, warnings = paramsm.Resolver(self.sources).resolve(inputs, "expert")
+         cal = f.get("soil_calibration")
+         if cal:
+             soil_changed = any(k in overrides for k in ("sand", "clay", "om", "bd", "soil_type_ua", "lat", "lon"))
+@@ -182,9 +217,16 @@
+                  soil_hydraulics=WaterBalanceEngine(P).summary())
+         # зміна ґрунту/культури робить старий стан некоректним → перерахунок з нуля
+         if any(k in overrides for k in ("crop", "sowing_date", "sand", "clay", "om", "bd", "soil_type_ua",
+-                                        "theta_fc", "theta_wp", "lat", "lon")):
++                                        "theta_fc", "theta_wp", "lat", "lon", "stones", "ds", "ds_max",
++                                        "sensor_calib", "sensor_offset", "sensor_calibrated", "sensor_depth_cm",
++                                        "zr_max_override", "dev_mode", "prev_crop")):
+             f["state"] = None
+             self._reset_event_flags(f)
++            f["ml_local"] = None
++            f["ml_log"] = []
++            f["last_recommendation"] = None
++        if any(k in overrides for k in ("lat", "lon")):
++            f.pop("era5l_clim", None)
+ 
+         self._save(f)
+         return dict(field_id=fid, params=P, provenance=prov, warnings=warnings)
+@@ -193,8 +235,10 @@
+     def _reset_event_flags(f):
+         """Після скидання стану історія відтворюється заново: покази датчика і поливи мають
+         увійти в неї знову (інакше вони позначені «використаними» і ігноруються)."""
++        f.pop("state_source", None)
+         for e in f["events"]["sensor"]:
+             e.pop("used", None)
++            e.pop("assimilation", None)
+         for e in f["events"]["irrigation"]:
+             e.pop("applied", None)
+ 
+@@ -207,6 +251,7 @@
+                            note=f"калібровано за датчиком ({cal.get('n_events', 0)} подій зволоження, "
+                                 f"{cal.get('n_days', 0)} діб)", name_uk=prov.get(k, {}).get("name_uk", k))
+ 
++    @_locked
+     def calibrate_soil(self, fid, weather=None, apply=True):
+         """
+         Калібрує θFC і θWP за всіма показами датчика поля (див. soil_calibration.py).
+@@ -257,21 +302,40 @@
+         self._save(f)
+         return _jsonable(dict(field_id=fid, **res))
+ 
++    def _replay_for_event(self, f, t):
++        """Late observations must be replayed, never silently discarded or double-counted."""
++        if f.get("state") and t <= _utc(f["state"]["time"]):
++            f["state"] = None
++            self._reset_event_flags(f)
++
+     # ------------------------------------------------------------------ події
++    @_locked
+     def add_sensor_reading(self, fid, theta, depth_cm=None, time=None, sensor_id="s1"):
+         f = self.load_field(fid)
+         t = _utc(time)
+-        f["events"]["sensor"].append(dict(time=t.isoformat(), theta=float(theta),
+-                                          depth_cm=depth_cm or f["params"].get("sensor_depth_cm", 20),
++        theta = _number(theta, "theta", maximum=100)
++        depth_cm = _number(depth_cm if depth_cm is not None else f["params"].get("sensor_depth_cm", 20),
++                           "depth_cm", minimum=2, maximum=150)
++        self._replay_for_event(f, t)
++        f["events"]["sensor"].append(dict(time=t.isoformat(), theta=theta,
++                                          depth_cm=depth_cm,
+                                           sensor_id=sensor_id))
+         self._save(f)
+ 
++    @_locked
+     def add_fertilizer(self, fid, dose_kg_ha, fert_type="npk_complex", time=None):
+         f = self.load_field(fid)
+-        f["events"]["fertilizer"].append(dict(time=_utc(time).isoformat(), dose_kg_ha=float(dose_kg_ha),
++        from .databases import FERTILIZERS
++        if fert_type not in FERTILIZERS:
++            raise ValueError("Невідомий тип добрива")
++        dose_kg_ha = _number(dose_kg_ha, "dose_kg_ha")
++        t = _utc(time)
++        self._replay_for_event(f, t)
++        f["events"]["fertilizer"].append(dict(time=t.isoformat(), dose_kg_ha=dose_kg_ha,
+                                               type=fert_type))
+         self._save(f)
+ 
++    @_locked
+     def log_irrigation(self, fid, amount_mm=None, time=None, recommended_mm=None, volume_m3=None, note=None,
+                        cycles=None):
+         """
+@@ -282,10 +346,19 @@
+         """
+         f = self.load_field(fid)
+         t = _utc(time)
++        if amount_mm is not None and volume_m3 is not None:
++            raise ValueError("Задайте лише amount_mm або volume_m3")
++        if volume_m3 is not None:
++            volume_m3 = _number(volume_m3, "volume_m3", positive=True)
++        if recommended_mm is not None:
++            recommended_mm = _number(recommended_mm, "recommended_mm", positive=True)
++        if cycles is not None and not isinstance(cycles, bool):
++            raise ValueError("cycles: потрібне true або false")
+         if amount_mm is None and volume_m3 is not None and f["params"].get("area_m2"):
+             amount_mm = volume_m3 * 1000.0 / float(f["params"]["area_m2"])
+         if amount_mm is None:
+             raise ValueError("Потрібна норма поливу (amount_mm) або обсяг (volume_m3) + площа поля")
++        amount_mm = _number(amount_mm, "amount_mm", positive=True)
+         user = UserPreferenceLearner(self.fe)
+         user.load(f["learners"].get("user"))
+         last = f.get("last_recommendation")
+@@ -317,6 +390,7 @@
+         ev = dict(time=t.isoformat(), gross_mm=float(amount_mm), recommended_mm=recommended_mm, note=note)
+         if cycles is not None:
+             ev["cycles"] = bool(cycles)
++        self._replay_for_event(f, t)
+         f["events"]["irrigation"].append(ev)
+         self._save(f)
+         return dict(ok=True, learned=learned)
+@@ -341,12 +415,14 @@
+ 
+     # ------------------------------------------------------------------ головне
+     # ------------------------------------------------------------------ ML-ядро прогнозу
+-    def _sensor_series(self, f, P):
++    def _sensor_series(self, f, P, until=None):
+         """Покази за глибинами {глибина_м: [(час, θ м³/м³)]} з калібруванням фільтра (θ = a + b·показ − зсув)."""
+         off = float(P.get("sensor_offset", 0.0))
+         cal = P.get("sensor_calib") or [0.0, 1.0]
+         out = {}
+         for e in f["events"]["sensor"]:
++            if until is not None and _utc(e["time"]) > until:
++                continue
+             th = float(e["theta"])
+             th = th / 100.0 if th > 1.0 else th
+             d = round(float(e.get("depth_cm") or 20.0) / 100.0, 3)
+@@ -359,12 +435,12 @@
+             return float(st["zr"])
+         return float(WaterBalanceEngine(f["params"]).crop["zr"][1])
+ 
+-    def _sensor_readings(self, f, P, zr=None):
++    def _sensor_readings(self, f, P, zr=None, until=None):
+         """
+         1.10: один узгоджений профіль кореневої зони з усіх датчиків (зважено за товщиною шарів),
+         а не змішаний ряд різних глибин. zr — глибина коренів (м), за замовчуванням — поточна з стану поля.
+         """
+-        return mlf.build_profile(self._sensor_series(f, P), zr if zr is not None else self._root_depth(f))
++        return mlf.build_profile(self._sensor_series(f, P, until=until), zr if zr is not None else self._root_depth(f))
+ 
+     def _irr_times(self, f):
+         return sorted(_utc(e["time"]) for e in f["events"]["irrigation"])
+@@ -415,7 +491,7 @@
+         b = kal.bias
+         taw = float(eng.taw(zr))
+         target = mlf.choose_target(zr)
+-        reads = self._sensor_readings(f, P, zr)
++        reads = self._sensor_readings(f, P, zr, until=now)
+         irr_t = self._irr_times(f)
+         ctx = dict(target=target, zr=zr, taw=taw)
+         choice = P.get("forecast_core") or "auto"
+@@ -430,7 +506,7 @@
+             off = ("domain", "поле поза Україною — ML-ядро навчене на 14 точках України, тому прогноз робить фізика "
+                              "(у режимі експерта ML можна ввімкнути примусово)")
+         if off is not None:
+-            ctx.update(mode="sensor" if (fresh_h is not None and fresh_h <= 48) else "model_only", ml=False,
++            ctx.update(mode="sensor" if (not sensor_fault and fresh_h is not None and 0 <= fresh_h <= 48) else "model_only", ml=False,
+                        off_cause=off[0], reason=off[1])
+             return ctx
+         if not inside or near > mlf.FAR_KM:
+@@ -578,9 +654,9 @@
+         except Exception:
+             return {}
+ 
+-    def _local_rows(self, f, reads, h):
++    def _local_rows(self, f, reads, h, until=None):
+         """Приклади для локального донавчання: ознаки з журналу + фактична зміна θ за 24·h год із показів."""
+-        series = self._sensor_series(f, f["params"])
++        series = self._sensor_series(f, f["params"], until=until)
+         irr_t = self._irr_times(f)
+         prof_cache = {}
+         rows = []
+@@ -607,7 +683,7 @@
+         reads = None
+         models, infos, n = {}, {}, 0
+         for h in (1, 2):
+-            rows = self._local_rows(f, reads, h)
++            rows = self._local_rows(f, reads, h, until=now or datetime.now(timezone.utc))
+             n = max(n, len(rows))
+             m, info = mlf.LocalResidual.fit(rows, h)
+             infos[str(h)] = info
+@@ -622,6 +698,7 @@
+                              time=(now or datetime.now(timezone.utc)).isoformat())
+         return f["ml_local"]
+ 
++    @_locked
+     def finetune_local(self, fid):
+         """
+         Локальне донавчання ML-ядра на даних цього поля вручну (режим експерта). З версії 1.9 воно також
+@@ -643,7 +720,7 @@
+         """
+         if self.ml_core is None or not f.get("ml_log"):
+             return None
+-        n = len(self._local_rows(f, None, 1))
++        n = len(self._local_rows(f, None, 1, until=now))
+         f["ml_progress"] = dict(rows=n, need=mlf.LOCAL_MIN_ROWS)
+         if n < mlf.LOCAL_MIN_ROWS:
+             return None
+@@ -720,6 +797,7 @@
+     def _measurement_required(self, f, fid, now, tz, new_state, core, notes):
+         """Політика «off»: без датчика рекомендацію не видаємо — просимо зробити вимір."""
+         f["state"] = new_state
++        f["last_recommendation"] = dict(time=now.isoformat(), action="measure", gross_mm=None)
+         self._save(f)
+         msg = ("Для цього поля немає показів датчика. Рекомендації без вимірювання вимкнено налаштуванням "
+                "застосунку — додайте показ датчика або ручний вимір вологості.")
+@@ -733,6 +811,7 @@
+                               reasons=[dict(code="measurement_required")]))
+ 
+     # ------------------------------------------------------------------ головне
++    @_locked
+     def recommend(self, fid, now=None, weather=None, ensemble=None):
+         f = self.load_field(fid)
+         P = dict(f["params"])
+@@ -751,6 +830,8 @@
+         horizon = int(P.get("horizon_h", 72))
+         sowing = _utc(P["sowing_date"])
+         st = f.get("state")
++        if st and _utc(st["time"]) > now:
++            raise ValueError("Час рекомендації раніший за збережений стан поля")
+         if st:
+             start = _utc(st["time"])
+         else:
+@@ -761,18 +842,32 @@
+         wx = self._weather(P, min(start, now - timedelta(days=18)), horizon, weather)
+         wx_full = wx
+         times = wx["times"]
++        if not times or any(b - a != timedelta(hours=1) for a, b in zip(times, times[1:])):
++            raise ValueError("Погода має містити непорожній, послідовний погодинний ряд")
++        if not any(t <= now for t in times) or times[-1] < now + timedelta(hours=6):
++            raise ValueError("Ряд погоди не покриває поточний час і щонайменше 6 год прогнозу")
+         # обрізаємо ряд: [start, now + horizon]
+         # годину стану теж беремо (повторний виклик у ту саму годину не повинен давати порожній ряд)
+         i_a = next((i for i, t in enumerate(times) if t > start - timedelta(hours=1)), 0)
+         i_b = next((i for i, t in enumerate(times) if t > now + timedelta(hours=horizon)), len(times))
+         times = times[i_a:i_b]
++        if not times or not any(t <= now for t in times):
++            raise ValueError("Ряд погоди не покриває стан поля")
+         W = {k: (np.asarray(v)[i_a:i_b] if isinstance(v, (list, np.ndarray)) and len(v) == len(wx["times"]) else v)
+              for k, v in wx.items() if k != "times"}
+         i_now = max(0, max(i for i, t in enumerate(times) if t <= now))
+         if times[-1] < now + timedelta(hours=24):
+             notes.append("Прогноз погоди коротший за 24 год — рішення менш надійне")
++        for key in ("temperature_2m", "relative_humidity_2m", "wind_speed_10m", "shortwave_radiation", "precipitation"):
++            try:
++                values = np.asarray(W[key], float)
++                valid = values.ndim == 1 and len(values) == len(times) and np.isfinite(values).any()
++            except (KeyError, TypeError, ValueError):
++                valid = False
++            if not valid:
++                raise ValueError(f"Погода: немає придатного погодинного ряду {key}")
+         _fill_weather_gaps(W)
+-        tz = _tz_offset(now)
++        tz = P.get("tz_offset_h") if P.get("tz_offset_h") is not None else _tz_offset(now)
+         # ---- стадія розвитку
+         mode = P.get("dev_mode", "thermal")
+         if st and st.get("dvs") is not None:
+@@ -854,6 +949,7 @@
+                                       P.get("sigma_sens", 0.01), P.get("sigma_spat", 0.015), e.get("depth_cm"),
+                                       dr_bounds=(-sat_cap, float(flux["taw"][0])), t=times[i], layer=layer)
+                     kal_logs.append(info)
++                    e["assimilation"] = info
+                     if info["accepted"]:
+                         lk[0] = kal.k_field
+                 stt["dr"][0] = kal.dr
+@@ -865,7 +961,9 @@
+             state, hist = eng.run(S, state, rain_hist, irr, learn_k=lk, i0=i_start, i1=i_now + 1, irr_infil=irr_infil,
+                                   callback=cb)
+         k_learn = float(np.clip(kal.k_field, 0.6, 1.5))
+-        sensor_fault = any(not l["accepted"] for l in kal_logs[-3:])
++        recent_sensor_logs = [e["assimilation"] for e in sorted(f["events"]["sensor"], key=lambda e: e["time"])
++                              if e.get("assimilation") and _utc(e["time"]) <= now][-3:]
++        sensor_fault = any(not l["accepted"] for l in recent_sensor_logs)
+         # ---- збереження стану на «зараз»
+         new_state = dict(time=times[i_now].isoformat(), dr=float(state["dr"][0]), de=float(state["de"][0]),
+                          du=float(state["du"][0]), swe=float(state["swe"][0]),
+@@ -891,11 +989,13 @@
+         ctx_now = _ctx(S, i_now, state, None, P, eng, rain_hist, precip_f, prob_f)
+         user_mult = user.multiplier(ctx_now)
+         P["user_mult_max"] = user.max_up
+-        last_sensor = max((_utc(e["time"]) for e in f["events"]["sensor"]), default=None)
++        last_sensor = max((_utc(e["time"]) for e in f["events"]["sensor"] if _utc(e["time"]) <= now), default=None)
+         fresh_h = (now - last_sensor).total_seconds() / 3600.0 if last_sensor else None
+         st_dec = dict(dr=new_state["dr"], de=new_state["de"], x=new_state["x"], fw=new_state["fw"], zr=new_state["zr"],
+                       du=new_state["du"], swe=new_state["swe"])
+         P["_rain_waits"] = int((st or {}).get("rain_waits", 0))
++        if st and _utc(st["time"]) == now and (f.get("last_recommendation") or {}).get("waiting_for_rain"):
++            P["_rain_waits"] = max(0, P["_rain_waits"] - 1)
+         # ---- поточний стан без свіжого датчика: ERA5-Land або старий показ, прокручені ML-ядром (1.7)
+         try:
+             wxb = self._weather_bundle(wx_full, P)
+@@ -950,8 +1050,8 @@
+                         theta_upper=round(float(eng.hyd["theta_fc"] - new_state["du"] / (1000 * min(0.3, zr))), 4),
+                         theta_upper_sigma=round(float(kal.sigma_du / (1000 * min(0.3, zr))), 4),
+                         snow_swe_mm=round(new_state["swe"], 1))
+-        if kal_logs:
+-            moisture["last_sensor"] = kal_logs[-1]
++        if recent_sensor_logs:
++            moisture["last_sensor"] = recent_sensor_logs[-1]
+         when_local = None
+         if dec["action"] == "postpone":
+             t_when = Sf.times[dec["t_idx"]] if dec["t_idx"] is not None else now + timedelta(hours=dec["postpone_hours"])
+@@ -987,7 +1087,7 @@
+         f["last_recommendation"] = dict(time=now.isoformat(), action=dec["action"],
+                                         gross_mm=(dec["amount"] or {}).get("gross_mm"),
+                                         cycles=bool((dec["amount"] or {}).get("cycles")),
+-                                        user_mult=user_mult, ctx=ctx_now)
++                                        user_mult=user_mult, waiting_for_rain=bool(dec.get("waiting_for_rain")), ctx=ctx_now)
+         self._ml_log(f, core, now)
+         auto_ft = None
+         try:
+@@ -1114,7 +1214,7 @@
+ def _align_members(ens, times):
+     idx = {t: i for i, t in enumerate(ens["times"])}
+     cols = [idx.get(t) for t in times]
+-    if sum(c is None for c in cols) > len(times) * 0.2:
++    if any(c is None for c in cols):
+         return None
+     m = ens["members"]
+     out = np.zeros((m.shape[0], len(times)))
+--- a/hydrobrain/decision.py
++++ b/hydrobrain/decision.py
+@@ -66,15 +66,23 @@
+     Безперервно (без циклів) вбиралась би лише частка Ksat / I.
+     """
+     rate, ks, s = float(rate_mm_h), float(ksat_mm_h), max(float(storage_mm), 0.5)
+-    t_on = s / max(rate - ks, 1e-6)
++    gross_mm = float(gross_mm)
++    if not all(math.isfinite(v) for v in (rate, ks, s, gross_mm)) or rate <= 0 or ks <= 0 or gross_mm <= 0:
++        raise ValueError("План циклів потребує додатних скінченних норми, інтенсивності та Ksat")
++    if rate <= ks or int(max_cycles) < 1:
++        raise ValueError("Цикли потрібні лише при інтенсивності > Ksat; max_cycles >= 1")
++    t_on = s / (rate - ks)
+     per = rate * t_on
+     soak = s / max(ks, 1e-6)
+-    need = max(int(math.ceil(float(gross_mm) / max(per, 1e-6) - 1e-3)), 1)
++    need = max(int(math.ceil(float(gross_mm) / max(per, 1e-6) - 1e-9)), 1)
+     n = min(need, int(max_cycles))
+     deliver = min(float(gross_mm), n * per)
+-    return dict(cycles=n, needed_cycles=need, limited=need > n, on_min=max(int(round(t_on * 60)), 1),
+-                soak_min=int(round(soak * 60)), per_cycle_mm=round(per, 1),
+-                total_h=round(n * t_on + (n - 1) * soak, 1), deliver_gross_mm=round(deliver, 1), deliver_exact=deliver,
++    last_mm = max(deliver - (n - 1) * per, 0.0)
++    return dict(cycles=n, needed_cycles=need, limited=need > n, on_min=round(min(t_on, deliver / rate) * 60, 3),
++                last_on_min=round(last_mm / rate * 60, 3), last_cycle_mm=round(last_mm, 3),
++                duration_min=round(deliver / rate * 60, 3),
++                soak_min=round(soak * 60, 3), per_cycle_mm=round(per, 1),
++                total_h=round(deliver / rate + (n - 1) * soak, 3), deliver_gross_mm=round(deliver, 1), deliver_exact=deliver,
+                 rate_mm_h=round(rate, 1), ksat_mm_h=round(ks, 2), storage_mm=s,
+                 continuous_infiltration=round(ks / rate, 3))
+ 
+@@ -88,8 +96,9 @@
+         try:
+             import json
+             import os
+-            d = json.load(open(os.path.join(os.path.dirname(__file__), "models", "pstress_calibration.json"),
+-                               encoding="utf-8"))[kind]
++            with open(os.path.join(os.path.dirname(__file__), "models", "pstress_calibration.json"),
++                      encoding="utf-8") as stream:
++                d = json.load(stream)[kind]
+             _PSTRESS_CAL[kind] = (np.asarray(d["x"], float), np.asarray(d["y"], float))
+         except Exception:
+             _PSTRESS_CAL[kind] = None
+@@ -197,13 +206,18 @@
+     t_crit = _first_cross(r0["dr"], r0["raw"] + TH["crit_frac"] * (r0["taw"] - r0["raw"]))
+     hz = min(H, int(P.get("horizon_h", 72)))
+     h_dec = min(int(TH["h_decision"]), hz)
+-    p_stress = {h: float(np.mean(t_cross <= h)) for h in (12, 24, 48, hz)}
++    p_stress = {h: float(np.mean(t_cross <= h)) for h in {12, 24, 48, hz, h_dec}}
+     # 1.11: перекалібрування ймовірності (ізотонічна крива з бектесту на ERA5-Land, ds/stage4) — сирі частки
+     # сценаріїв Монте-Карло систематично не збігались із частотою подій; пороги рішення діють на калібровані
+     p_stress_raw = dict(p_stress)
+-    cal_map = _pstress_map("ml" if dr_shift is not None else "physics") if P.get("pstress_calibration", True) else None
++    # The fitted curve targets 48 h only; it is not a calibration for 12/24/72 h.
++    from .ml_forecast import in_domain
++    calibration_scope = (H >= 48 and P.get("crop") == "maize" and P.get("irrigation_method") == "drip"
++                         and in_domain(P["lat"], P["lon"])[0])
++    cal_map = _pstress_map("ml" if dr_shift is not None else "physics") if (
++        P.get("pstress_calibration", True) and calibration_scope) else None
+     if cal_map is not None:
+-        p_stress = {h: float(np.interp(v, cal_map[0], cal_map[1])) for h, v in p_stress.items()}
++        p_stress[48] = float(np.interp(p_stress[48], cal_map[0], cal_map[1]))
+     p_crit_24 = float(np.mean(t_crit <= 24))
+ 
+     dr_now = float(state["dr"])
+@@ -217,7 +231,7 @@
+                       exp_72h=float(rain_sum(0, 72).mean()), p_ge5_48h=float(np.mean(rain_sum(0, 48) >= 5.0)),
+                       max_prob_24h=float(np.nanmax(np.r_[np.asarray(prob[:24], float), 0.0])))
+     wet_hours = np.nonzero(np.nan_to_num(np.asarray(precip[:hz], float)) >= 0.3)[0]
+-    rain_stats["first_rain_h"] = int(wet_hours[0]) if len(wet_hours) else None
++    rain_stats["first_rain_h"] = int(wet_hours[0]) + 1 if len(wet_hours) else None
+     dvs_now = float(S.dvs[0])
+     sens = crop.get("sensitive", (0, 0))
+     in_sensitive = sens[1] > sens[0] and sens[0] <= dvs_now <= sens[1]
+@@ -274,7 +288,7 @@
+                 action, t_idx = "irrigate_now", 0
+             else:
+                 action, t_idx = "postpone", j
+-                reasons.append(dict(code="better_window", hours=j))
++                reasons.append(dict(code="better_window", hours=j + 1))
+     else:
+         hrs = t_cross[np.isfinite(t_cross)]
+         t_med = float(np.median(t_cross))
+@@ -292,18 +306,18 @@
+             q25 = float(np.quantile(t_cross, 0.25))
+             action, next_check = "skip", int(np.clip(q25 * 0.7, 3, 24))
+             if p_stress[h_dec] >= TH["p_watch"]:
+-                reasons.append(dict(code="watch", p=p_stress[h_dec], hours=next_check))
++                reasons.append(dict(code="watch", p=p_stress[h_dec], hours=next_check, horizon_h=h_dec))
+         else:
+             # плануємо полив на найкраще вікно до медіанного часу перетину порогу
+             t50 = float(np.quantile(t_cross, 0.5))
+             deadline = int(np.clip(t50, 1, h_dec))
+-            reasons.append(dict(code="will_need_soon", hours=deadline, p=p_stress[h_dec], dr=dr_now, raw=raw_now))
++            reasons.append(dict(code="will_need_soon", hours=deadline, p=p_stress[h_dec], dr=dr_now, raw=raw_now, horizon_h=h_dec))
+             j = best_window(S, 0, deadline + 1, P["irrigation_method"], prob, preferred)
+             if j <= 1:
+                 action, t_idx = "irrigate_now", 0
+             else:
+                 action, t_idx = "postpone", j
+-                reasons.append(dict(code="better_window", hours=j))
++                reasons.append(dict(code="better_window", hours=j + 1))
+         if rain_stats["exp_24h"] >= 2.0 and action != "skip":
+             reasons.append(dict(code="rain_expected", mm=rain_stats["exp_24h"], p=rain_stats["max_prob_24h"] / 100.0,
+                                 hours=rain_stats["first_rain_h"]))
+@@ -313,7 +327,7 @@
+         if meth["wind_sensitive"] and S.u2[t_idx] > TH["wind_max"] and dr_now < crit_now:
+             j = best_window(S, t_idx, min(t_idx + 12, H), P["irrigation_method"], prob, preferred)
+             if j != t_idx:
+-                reasons.append(dict(code="wind_high", wind=float(S.u2[t_idx]), hours=j))
++                reasons.append(dict(code="wind_high", wind=float(S.u2[t_idx]), hours=j + 1))
+                 action, t_idx = "postpone", j
+         tmax24 = float(np.max(S.t_air[:24]))
+         if tmax24 >= TH["heat_tmax"]:
+@@ -390,9 +404,14 @@
+                       leaching_fraction=round(lr, 3), user_multiplier=round(user_mult, 3),
+                       efficiency=round(eff, 3))
+         if plan is not None:     # план циклів для остаточної норми (після всіх поправок)
+-            p2 = infiltration_plan(gross, plan["rate_mm_h"], plan["ksat_mm_h"], plan["storage_mm"], 10 ** 6)
++            p2 = infiltration_plan(gross, engine.application_rate(), engine.hyd["ksat_mm_h"],
++                                   plan["storage_mm"], 10 ** 6)
++            for reason in reasons:
++                if reason["code"] == "infiltration_cycles":
++                    reason.update({k: p2[k] for k in ("cycles", "on_min", "soak_min", "total_h", "last_on_min")})
+             amount["cycles"] = {k: p2[k] for k in ("cycles", "on_min", "soak_min", "per_cycle_mm", "total_h",
+-                                                     "rate_mm_h", "ksat_mm_h", "continuous_infiltration")}
++                                                     "rate_mm_h", "ksat_mm_h", "continuous_infiltration",
++                                                     "last_on_min", "last_cycle_mm", "duration_min")}
+         # розкид норми за сценаріями (10–90%): та сама логіка, що й для медіани, але для кожного сценарію
+         # (використовується для орієнтовної рекомендації без датчика, 1.8)
+         q = np.quantile(r0["dr"][:, t_idx], [0.1, 0.9])
+@@ -402,10 +421,10 @@
+         if area:
+             amount["m3_total"] = round(gross * float(area) / 1000.0, 2)
+             if P.get("flow_rate_m3_h"):
+-                amount["duration_min"] = int(round(amount["m3_total"] / float(P["flow_rate_m3_h"]) * 60))
++                amount["duration_min"] = int(round((gross * float(area) / 1000.0) / float(P["flow_rate_m3_h"]) * 60))
+         if plan is not None:     # чистий час поливу в циклах; загальний час разом із паузами — cycles.total_h
+-            amount["duration_min"] = int(round(amount["cycles"]["cycles"] * amount["cycles"]["on_min"]))
+-        next_check = max(int(t_idx), 1) if action == "postpone" else 24
++            amount["duration_min"] = round(p2["duration_min"], 3)
++        next_check = max(int(t_idx) + 1, 1) if action == "postpone" else 24
+ 
+     # ---------- впевненість
+     p = p_stress[h_dec]
+@@ -416,16 +435,22 @@
+ 
+     t_local = S.times[t_idx] if t_idx is not None else None
+     return dict(action=action, t_idx=t_idx, when_utc=t_local.isoformat() if t_local else None,
+-                postpone_hours=(int(t_idx) if t_idx is not None else int(postpone_h or 0)) if action == "postpone" else 0,
++                postpone_hours=(int(t_idx) + 1 if t_idx is not None else int(postpone_h or 0)) if action == "postpone" else 0,
+                 amount=amount, waiting_for_rain=postpone_h is not None,
+                 next_check_hours=int(next_check),
+-                risk=dict(p_stress_12h=round(p_stress[12], 3), p_stress_24h=round(p_stress[24], 3),
+-                          p_stress_48h=round(p_stress[48] if 48 in p_stress else p_stress[h_dec], 3),
+-                          p_stress_horizon=round(p_stress[hz], 3), p_critical_24h=round(p_crit_24, 3),
++                risk=dict(p_stress_12h=round(p_stress[12], 3) if H >= 12 else None,
++                          p_stress_24h=round(p_stress[24], 3) if H >= 24 else None,
++                          p_stress_48h=round(p_stress[48], 3) if H >= 48 else None,
++                          p_stress_horizon=round(p_stress[hz], 3), p_critical_24h=round(p_crit_24, 3) if H >= 24 else None,
+                           median_hours_to_threshold=None if np.median(t_cross) > H else float(np.median(t_cross)),
+                           expected_waste_mm=round(expected_waste, 1),
+-                          p_stress_48h_raw=round(p_stress_raw[48] if 48 in p_stress_raw else p_stress_raw[h_dec], 3),
+-                          calibrated=cal_map is not None),
++                          p_stress_48h_raw=round(p_stress_raw[48], 3) if H >= 48 else None,
++                          calibrated=cal_map is not None, calibrated_horizons=[48] if cal_map is not None else [],
++                          calibration_scope="maize/drip/Ukraine/48h",
++                          probability_horizons_available=[h for h in (12, 24, 48) if h <= H],
++                          p_stress_12h_raw=round(p_stress_raw[12], 3),
++                          p_stress_24h_raw=round(p_stress_raw[24], 3),
++                          p_stress_horizon_raw=round(p_stress_raw[hz], 3)),
+                 rain=rain_stats, confidence=round(float(conf), 2), confidence_label=conf_label,
+                 reasons=reasons, state=dict(dr=dr_now, raw=raw_now, taw=taw_now, ks=ks_now, dvs=dvs_now,
+                                             sensitive=in_sensitive),
+--- a/hydrobrain/explain.py
++++ b/hydrobrain/explain.py
+@@ -54,7 +54,7 @@
+         return f"Запасу вологи достатньо: дефіцит {r['dr']:.0f} мм < порогу {r['raw']:.0f} мм, " + tail
+     if c == "will_need_soon":
+         return (f"Поріг стресу ({r['raw']:.0f} мм) буде перетнуто приблизно через {_h(r['hours'])} "
+-                f"(імовірність {_pct(r['p'])} за 48 год).")
++                f"(імовірність {_pct(r['p'])} за {r.get('horizon_h', 48)} год).")
+     if c == "better_window":
+         return f"Краще вікно для поливу — через {_h(r['hours'])} (менше випаровування/вітру)."
+     if c == "wind_high":
+@@ -69,7 +69,7 @@
+     if c == "reduced_for_rain":
+         return f"Норму зменшено (×{r['factor']:.2f}), щоб не втрачати воду на дренаж після дощу."
+     if c == "watch":
+-        return (f"Ситуація прикордонна (імовірність стресу {_pct(r['p'])} за 48 год) — "
++        return (f"Ситуація прикордонна (імовірність стресу {_pct(r['p'])} за {r.get('horizon_h', 48)} год) — "
+                 f"перевірити знову через {_h(r['hours'])}.")
+     if c == "rain_wait_limit":
+         return (f"Дощ уже обіцяли {r['n']} рази поспіль, а стрес триває — більше не чекаємо, поливаємо.")
+@@ -94,7 +94,8 @@
+     if c == "infiltration_cycles":
+         return (f"Інтенсивність дощування {r['rate_mm_h']:.0f} мм/год перевищує швидкість вбирання ґрунту "
+                 f"({r['ksat_mm_h']:.1f} мм/год): безперервно вода стікала б з поля. Поливайте {r['cycles']} циклами "
+-                f"по ≈ {r['on_min']} хв з паузами ≈ {r['soak_min']} хв (разом ≈ {r['total_h']:.1f} год) — "
++                f"до ≈ {r['on_min']} хв (останній ≈ {r.get('last_on_min', r['on_min'])} хв) "
++                f"з паузами ≈ {r['soak_min']} хв (разом ≈ {r['total_h']:.1f} год) — "
+                 f"так уся вода вбереться.")
+     if c == "infiltration_limited":
+         return (f"Ґрунт вбирає воду повільно ({r['ksat']:.1f} мм/год при інтенсивності {r['rate']:.0f} мм/год): за добу "
+--- a/hydrobrain/learning.py
++++ b/hydrobrain/learning.py
+@@ -21,6 +21,7 @@
+ import csv
+ import math
+ import os
++import threading
+ from datetime import datetime
+ 
+ import numpy as np
+@@ -149,7 +150,16 @@
+             self.n_timing = d.get("n_timing", 0)
+ 
+ 
++_TRAINING_LOG_LOCK = threading.Lock()
++
++
+ def append_training_row(path, features: dict, targets: dict, meta: dict):
++    # Different fields share one CSV; per-field locks cannot protect its header.
++    with _TRAINING_LOG_LOCK:
++        _append_training_row(path, features, targets, meta)
++
++
++def _append_training_row(path, features: dict, targets: dict, meta: dict):
+     """Журнал для офлайн-навчання важчих моделей (градієнтний бустинг тощо)."""
+     row = {**meta, **{f"f_{k}": v for k, v in features.items()}, **{f"y_{k}": v for k, v in targets.items()}}
+     new = not os.path.exists(path)
+--- a/hydrobrain/ml_forecast.py
++++ b/hydrobrain/ml_forecast.py
+@@ -243,14 +243,14 @@
+     """
+     hist = [(t0 - timedelta(hours=72), w_m3), (t0 - timedelta(hours=24), w_m1), (t0, w0)]
+     t, w = t0, w0
+-    while (now - t).total_seconds() >= 23.5 * 3600:
++    while (now - t).total_seconds() >= 24 * 3600:
+         wd = daily_weather(wx["times"], t, wx["precip"], wx["eto"], wx["temp"], wx["rh"], wx["sw"], wx["wind"])
+         w24 = next((v for tt, v in reversed(hist) if abs((tt - (t - timedelta(hours=24))).total_seconds()) < 3 * 3600), None)
+         w72 = next((v for tt, v in reversed(hist) if abs((tt - (t - timedelta(hours=72))).total_seconds()) < 3 * 3600), None)
+         dw = core.predict(target, 1, build_features(t, w, w24, w72, wd, 1))
+         t, w = t + timedelta(hours=24), w + dw
+         hist.append((t, w))
+-    if (now - t).total_seconds() > 3600:                  # залишок < доби — частка добового кроку
++    if (now - t).total_seconds() > 0:                  # залишок < доби — частка добового кроку
+         frac = (now - t).total_seconds() / 86400.0
+         wd = daily_weather(wx["times"], t, wx["precip"], wx["eto"], wx["temp"], wx["rh"], wx["sw"], wx["wind"])
+         w24 = next((v for tt, v in reversed(hist) if abs((tt - (t - timedelta(hours=24))).total_seconds()) < 3 * 3600), None)
+--- a/hydrobrain/params.py
++++ b/hydrobrain/params.py
+@@ -11,6 +11,7 @@
+ """
+ from __future__ import annotations
+ 
++import math
+ from dataclasses import asdict, dataclass, field
+ from datetime import date, datetime, timezone
+ 
+@@ -47,9 +48,9 @@
+ 
+ CATALOG = [
+     # ---- 0. Геологія та локація
+-    ParamSpec("lat", "Loc", 0, "Широта поля", "°", default=None, beginner=True, min=44, max=53,
++    ParamSpec("lat", "Loc", 0, "Широта поля", "°", default=None, beginner=True, min=-90, max=90,
+               effect_uk="клімат, радіація, прогноз"),
+-    ParamSpec("lon", "Loc", 0, "Довгота поля", "°", default=None, beginner=True, min=22, max=41,
++    ParamSpec("lon", "Loc", 0, "Довгота поля", "°", default=None, beginner=True, min=-180, max=180,
+               effect_uk="клімат, радіація, прогноз"),
+     ParamSpec("alt", "Alt", 0, "Висота над рівнем моря", "м", default=150.0, min=-30, max=2100,
+               effect_uk="↓ тиск Pa → γ; ↑ амплітуда T", auto="Open-Meteo Elevation (Copernicus DEM)"),
+@@ -208,8 +209,70 @@
+ SPEC = {p.key: p for p in CATALOG}
+ 
+ 
++def validate_mode(mode):
++    if mode not in ("beginner", "expert"):
++        raise ValueError("Режим має бути beginner або expert")
++
++
++def _validate_value(p, value):
++    """Normalize user data before any network calls or state writes."""
++    label = p.name_uk
++    if p.kind in ("float", "int"):
++        if isinstance(value, bool):
++            raise ValueError(f"{label}: потрібне число")
++        try:
++            number = float(value)
++        except (TypeError, ValueError, OverflowError):
++            raise ValueError(f"{label}: потрібне число") from None
++        if not math.isfinite(number):
++            raise ValueError(f"{label}: число має бути скінченним")
++        if p.kind == "int" and not number.is_integer():
++            raise ValueError(f"{label}: потрібне ціле число")
++        if (p.min is not None and number < p.min) or (p.max is not None and number > p.max):
++            raise ValueError(f"{label}: значення поза межами {p.min} … {p.max}")
++        return int(number) if p.kind == "int" else number
++    if p.kind == "bool":
++        if not isinstance(value, bool):
++            raise ValueError(f"{label}: потрібне true або false")
++    elif p.kind == "select":
++        # HTML select sends numeric option keys as strings (cn_lambda).
++        matches = [k for k in p.options if str(k) == str(value)]
++        if not matches:
++            raise ValueError(f"{label}: невідомий варіант {value!r}")
++        return matches[0]
++    elif p.kind == "date":
++        try:
++            return date.fromisoformat(value).isoformat()
++        except (TypeError, ValueError):
++            raise ValueError(f"{label}: потрібна дата РРРР-ММ-ДД") from None
++    elif p.kind == "list":
++        if not isinstance(value, list):
++            raise ValueError(f"{label}: потрібен список")
++        if p.key == "sensor_calib":
++            if len(value) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float))
++                                      or not math.isfinite(v) for v in value) or value[1] <= 0:
++                raise ValueError("sensor_calib: потрібні два скінченні числа [a, b], b > 0")
++        elif p.key == "preferred_hours":
++            if any(type(v) is not int or not 0 <= v <= 23 for v in value):
++                raise ValueError("preferred_hours: потрібні цілі години 0 … 23")
++        elif p.key == "fertilizers":
++            for event in value:
++                if not isinstance(event, dict):
++                    raise ValueError("fertilizers: кожна подія має бути об’єктом")
++                try:
++                    datetime.fromisoformat(event["time"].replace("Z", "+00:00"))
++                    dose = float(event["dose_kg_ha"])
++                    valid = math.isfinite(dose) and dose >= 0 and event.get("type", "npk_complex") in FERTILIZERS
++                except (KeyError, TypeError, ValueError, AttributeError):
++                    valid = False
++                if not valid:
++                    raise ValueError("fertilizers: перевірте time, dose_kg_ha і type")
++    return value
++
++
+ def input_schema(mode="beginner"):
+     """Опис полів для автоматичної побудови форми в інтерфейсі."""
++    validate_mode(mode)
+     rows = []
+     for p in CATALOG:
+         if mode == "beginner" and not p.beginner:
+@@ -230,6 +293,9 @@
+         self.sources = sources
+ 
+     def resolve(self, user: dict, mode="beginner"):
++        validate_mode(mode)
++        if not isinstance(user, dict):
++            raise ValueError("Параметри поля мають бути об’єктом")
+         warnings, prov, P = [], {}, {}
+         allowed = {p.key for p in CATALOG if (mode == "expert" or p.beginner)}
+         u = {}
+@@ -242,7 +308,7 @@
+             if k not in allowed:
+                 warnings.append(f"«{SPEC[k].name_uk}» доступний лише в розширеному режимі — взято автоматичне значення")
+                 continue
+-            u[k] = v
++            u[k] = _validate_value(SPEC[k], v)
+ 
+         def put(k, v, src, note=""):
+             P[k] = v
+@@ -386,6 +452,16 @@
+         if P.get("structure") is None:
+             P["structure"] = "medium"
+ 
++        if P["sand"] + P["clay"] > 100:
++            raise ValueError("Сума часток піску та глини не може перевищувати 100%")
++        # Check the effective constants, including a derived counterpart.
++        from .soil import saxton_rawls
++        hyd = saxton_rawls(P["sand"], P["clay"], P["om"], P["bd"])
++        fc = P["theta_fc"] if P["theta_fc"] is not None else hyd["theta_fc"]
++        wp = P["theta_wp"] if P["theta_wp"] is not None else hyd["theta_wp"]
++        if fc <= wp:
++            raise ValueError("Вологість θFC має бути більшою за θWP")
++
+         # σ_geo — з походження ґрунтових даних і геології
+         if P.get("sigma_geo") is None:
+             put("sigma_geo", max(self.SIGMA_BY_SOURCE.get(prov["sand"]["source"], 0.3), g["taw_sigma"] * 0.8),
+--- /dev/null
++++ b/requirements-research.txt
+@@ -0,0 +1,3 @@
++-r requirements.txt
++matplotlib>=3.8
++reportlab>=4.0
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -5,7 +5,9 @@
+ tifffile>=2023.1      # SoilGrids через WCS (поки REST ISRIC призупинено)
+ fastapi>=0.110        # HTTP-обгортка server.py
+ uvicorn>=0.27
+-scikit-learn>=1.3     # ML-ядро прогнозу (моделі навчено на 1.8) і локальне донавчання; без нього — лише фізика
++scikit-learn==1.8.0     # ML-ядро прогнозу (моделі навчено на 1.8) і локальне донавчання; без нього — лише фізика
+ joblib>=1.3           # завантаження ML-моделей
+ pandas>=2.0
+ pytest>=7             # автотести
++
++httpx>=0.28,<0.29     # HTTP-тести FastAPI
+--- a/server.py
++++ b/server.py
+@@ -22,21 +22,31 @@
+ from pathlib import Path
+ 
+ from fastapi import FastAPI, HTTPException
+-from fastapi.responses import FileResponse
++from fastapi.responses import FileResponse, JSONResponse
+ from fastapi.middleware.cors import CORSMiddleware
+ from fastapi.staticfiles import StaticFiles
+ from pydantic import BaseModel
+ 
+-from hydrobrain import HydroBrain
++from hydrobrain import HydroBrain, __version__
+ 
+ DATA_DIR = os.environ.get("HYDRO_DATA", "hydro_data")
+ OFFLINE = os.environ.get("HYDRO_OFFLINE") == "1"
+ brain = HydroBrain(DATA_DIR, offline=OFFLINE)
+ UI = Path(__file__).resolve().parent / "ui" / "index.html"
+-app = FastAPI(title="HydroBrain — мозок поливу", version="1.2.0")
++app = FastAPI(title="HydroBrain — мозок поливу", version=__version__)
+ app.mount("/vendor", StaticFiles(directory=str(UI.parent / "vendor")), name="vendor")   # Leaflet локально
+ # дозволяє відкривати ui/index.html і як файл (file://), і з іншого порту/інтерфейсу
+ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
++
++
++@app.exception_handler(FileNotFoundError)
++async def field_not_found(request, exc):
++    return JSONResponse(status_code=404, content={"detail": "Поле не знайдено"})
++
++
++@app.exception_handler(ValueError)
++async def invalid_input(request, exc):
++    return JSONResponse(status_code=400, content={"detail": str(exc)})
+ 
+ 
+ class FieldIn(BaseModel):
+@@ -197,6 +207,8 @@
+         return _recommend(fid)
+     except FileNotFoundError:
+         raise HTTPException(404, "Поле не знайдено")
++    except ValueError as e:
++        raise HTTPException(400, str(e))
+     except Exception as e:
+         raise HTTPException(503, f"Не вдалося отримати дані: {e}")
+ 
+@@ -208,5 +220,7 @@
+         return _recommend(fid)
+     except FileNotFoundError:
+         raise HTTPException(404, "Поле не знайдено")
++    except ValueError as e:
++        raise HTTPException(400, str(e))
+     except Exception as e:
+         raise HTTPException(503, f"Не вдалося отримати дані: {e}")
+--- /dev/null
++++ b/tests/test_review_1111.py
+@@ -0,0 +1,300 @@
++"""Regression cases found during the 1.11 review (all tests use offline sources)."""
++from concurrent.futures import ThreadPoolExecutor
++from datetime import timedelta
++import json
++import math
++
++import numpy as np
++import pytest
++
++from hydrobrain import HydroBrain
++from hydrobrain.decision import infiltration_plan
++from hydrobrain.ml_forecast import MLCore, feature_names
++from test_hydrobrain import NOW, _wx
++
++INP = dict(lat=49.23, lon=28.47, crop="maize", sowing_date="2026-05-01",
++           irrigation_method="drip", soil_type_ua="chornozem_typical")
++
++
++def field(tmp_path, **extra):
++    b = HydroBrain(str(tmp_path), offline=True)
++    fid = b.create_field(dict(INP, **extra), mode="expert")["field_id"]
++    return b, fid
++
++
++@pytest.mark.parametrize("extra", [
++    {"lat": 91}, {"lon": -181}, {"lat": float("nan")}, {"area_m2": -1},
++    {"flow_rate_m3_h": 0}, {"horizon_h": 36.5}, {"horizon_h": 0},
++    {"mc_samples": 0}, {"sensor_calib": [0]}, {"sensor_calib": [0, 0]},
++    {"forecast_core": "fake"}, {"soil_type_ua": "fake"}, {"geo": "fake"},
++    {"sowing_date": "not-a-date"}, {"use_ensemble": "false"},
++    {"theta_fc": 0.1, "theta_wp": 0.2}, {"sand": 90, "clay": 40},
++    {"preferred_hours": [24]}, {"fertilizers": [{}]},
++])
++def test_invalid_parameters_are_rejected(tmp_path, extra):
++    with pytest.raises(ValueError):
++        field(tmp_path, **extra)
++    assert not list((tmp_path / "fields").glob("*.json"))
++
++
++def test_numeric_options_normalized_and_mode_validated(tmp_path):
++    b, fid = field(tmp_path, cn_lambda="0.05", horizon_h="36")
++    assert b.load_field(fid)["params"]["cn_lambda"] == 0.05
++    assert b.load_field(fid)["params"]["horizon_h"] == 36
++    with pytest.raises(ValueError):
++        b.create_field(INP, mode="typo")
++    with pytest.raises(ValueError):
++        b.input_schema("typo")
++
++
++@pytest.mark.parametrize("fid", ["../outside", "/tmp/x", "a/b", "..", "a\\b"])
++def test_field_paths_cannot_escape_data_directory(tmp_path, fid):
++    b = HydroBrain(str(tmp_path), offline=True)
++    with pytest.raises(ValueError):
++        b.load_field(fid)
++
++
++def test_existing_field_cannot_be_overwritten(tmp_path):
++    b, fid = field(tmp_path)
++    before = b.load_field(fid)
++    with pytest.raises(ValueError):
++        b.create_field(INP, field_id=fid)
++    assert b.load_field(fid) == before
++
++
++@pytest.mark.parametrize("kind,value", [("sensor", -0.1), ("sensor", 101), ("sensor", float("nan")),
++                                        ("irrigation", -2), ("irrigation", 0), ("irrigation", float("inf")),
++                                        ("fertilizer", -2)])
++def test_invalid_events_do_not_mutate_state(tmp_path, kind, value):
++    b, fid = field(tmp_path)
++    before = b.load_field(fid)
++    method = {"sensor": b.add_sensor_reading, "irrigation": b.log_irrigation,
++              "fertilizer": b.add_fertilizer}[kind]
++    with pytest.raises(ValueError):
++        method(fid, value)
++    assert b.load_field(fid) == before
++
++
++def test_concurrent_sensor_writes_are_not_lost(tmp_path):
++    b, fid = field(tmp_path)
++    with ThreadPoolExecutor(max_workers=8) as pool:
++        list(pool.map(lambda i: b.add_sensor_reading(fid, 0.3, time=NOW, sensor_id=str(i)), range(40)))
++    events = b.load_field(fid)["events"]["sensor"]
++    assert len(events) == 40 and len({e["sensor_id"] for e in events}) == 40
++
++
++def test_arbitrary_horizon_and_repeated_recommendation(tmp_path):
++    b, fid = field(tmp_path, horizon_h=36, forecast_core="physics")
++    b.add_sensor_reading(fid, 0.33, time=NOW)
++    r = b.recommend(fid, now=NOW, weather=_wx([]))
++    st = b.load_field(fid)["state"]
++    r2 = b.recommend(fid, now=NOW, weather=_wx([]))
++    assert b.load_field(fid)["state"]["dr"] == st["dr"]
++    assert r["risk"] == r2["risk"] and r["action"] == r2["action"]
++    assert not r["risk"]["calibrated"]
++    json.dumps(r2, allow_nan=False)
++
++
++def test_future_sensor_does_not_change_present_forecast(tmp_path):
++    b1, f1 = field(tmp_path / "a")
++    b2, f2 = field(tmp_path / "b")
++    for b, f in ((b1, f1), (b2, f2)):
++        b.add_sensor_reading(f, 0.3, time=NOW - timedelta(hours=1))
++    b2.add_sensor_reading(f2, 0.01, time=NOW + timedelta(days=3))
++    r1 = b1.recommend(f1, now=NOW, weather=_wx([]))
++    r2 = b2.recommend(f2, now=NOW, weather=_wx([]))
++    assert r1["moisture"] == r2["moisture"]
++    assert r1["forecast_core"] == r2["forecast_core"]
++    assert r1["risk"] == r2["risk"]
++
++
++def test_late_sensor_replayed_same_hour(tmp_path):
++    b, fid = field(tmp_path)
++    b.recommend(fid, now=NOW, weather=_wx([]))
++    b.add_sensor_reading(fid, 0.3, time=NOW - timedelta(hours=1))
++    assert b.load_field(fid)["state"] is None
++    b.recommend(fid, now=NOW, weather=_wx([]))
++    assert b.load_field(fid)["events"]["sensor"][0]["used"]
++
++
++def test_small_irrigation_duration_does_not_round_to_zero(tmp_path):
++    b, fid = field(tmp_path, area_m2=1, flow_rate_m3_h=0.01, forecast_core="physics")
++    b.add_sensor_reading(fid, 0.25, time=NOW)
++    r = b.recommend(fid, now=NOW, weather=_wx([]))
++    am = r["amount"]
++    assert am is not None
++    assert am["duration_min"] > 0
++
++
++def test_last_cycle_is_partial_and_total_time_matches_volume():
++    p = infiltration_plan(4, 20, 2, 3, 8)
++    assert p["cycles"] == 2
++    assert p["duration_min"] == pytest.approx(12)
++    assert p["last_on_min"] == pytest.approx(2)
++    assert p["total_h"] == pytest.approx(1.7)
++    assert (p["cycles"] - 1) * p["on_min"] + p["last_on_min"] == pytest.approx(p["duration_min"])
++
++
++def test_calibration_only_changes_48h_and_stays_in_scope(tmp_path):
++    b, fid = field(tmp_path)
++    b.add_sensor_reading(fid, 0.33, time=NOW)
++    r = b.recommend(fid, now=NOW, weather=_wx([]))["risk"]
++    assert r["calibrated_horizons"] == [48]
++    assert r["p_stress_24h"] == r["p_stress_24h_raw"]
++    assert r["p_stress_horizon"] == r["p_stress_horizon_raw"]
++    b2, f2 = field(tmp_path / "tomato", crop="tomato")
++    r2 = b2.recommend(f2, now=NOW, weather=_wx([]))["risk"]
++    assert not r2["calibrated"]
++
++
++def test_all_bundled_models_predict_finite_values():
++    core, note = MLCore.load()
++    assert core is not None, note
++    for target in ("T1", "T2", "T3", "RZ"):
++        for h in (1, 2):
++            feats = {name: 0.0 for name in feature_names(h)}
++            feats["w"] = 0.5
++            assert math.isfinite(core.predict(target, h, feats))
++
++
++def test_http_contract_and_offline_flow(tmp_path, monkeypatch):
++    from fastapi.testclient import TestClient
++    import server
++    monkeypatch.setattr(server, "brain", HydroBrain(str(tmp_path), offline=True))
++    monkeypatch.setattr(server, "OFFLINE", True)
++    with TestClient(server.app) as client:
++        assert client.get("/").status_code == 200
++        assert client.get("/vendor/leaflet/leaflet.js").status_code == 200
++        assert client.get("/schema/typo").status_code == 400
++        for route in ("sensor", "irrigation", "fertilizer"):
++            body = {"sensor": {"theta": 0.3}, "irrigation": {"amount_mm": 20},
++                    "fertilizer": {"dose_kg_ha": 2}}[route]
++            assert client.post(f"/fields/missing/{route}", json=body).status_code == 404
++        assert client.patch("/fields/missing", json={"crop": "maize"}).status_code == 404
++        assert client.post("/fields", json={"inputs": dict(INP, lat=999)}).status_code == 400
++        result = client.post("/fields", json={"inputs": INP})
++        assert result.status_code == 200
++        fid = result.json()["field_id"]
++        assert client.post(f"/fields/{fid}/sensor", json={"theta": -1}).status_code == 400
++        assert client.post(f"/fields/{fid}/sensor", json={"theta": 30}).status_code == 200
++        rec = client.post(f"/fields/{fid}/recommendation")
++        assert rec.status_code == 200, rec.text
++        assert rec.json()["forecast_core"]["core"] in ("physics", "ml", "ml_local")
++        assert client.post(f"/fields/{fid}/irrigation", json={"amount_mm": 10}).status_code == 200
++        assert client.post(f"/fields/{fid}/recommendation").status_code == 200
++
++
++def test_sensor_fault_is_preserved_on_repeat(tmp_path):
++    b, fid = field(tmp_path, forecast_core="physics")
++    b.add_sensor_reading(fid, 100, time=NOW)
++    r = b.recommend(fid, now=NOW, weather=_wx([]))
++    r2 = b.recommend(fid, now=NOW, weather=_wx([]))
++    assert any(x["code"] == "sensor_fault" for x in r["reasons"])
++    assert any(x["code"] == "sensor_fault" for x in r2["reasons"])
++    assert r["forecast_core"]["state_source"] == r2["forecast_core"]["state_source"]
++    assert r["moisture"]["last_sensor"] == r2["moisture"]["last_sensor"]
++
++
++def test_repeated_rain_wait_does_not_exhaust_limit(tmp_path, monkeypatch):
++    import hydrobrain.brain as module
++    real_decide = module.decide
++    seen = []
++    def force_wait(*args, **kwargs):
++        P = args[6]
++        seen.append(P["_rain_waits"])
++        result = real_decide(*args, **kwargs)
++        result["waiting_for_rain"] = True
++        return result
++    monkeypatch.setattr(module, "decide", force_wait)
++    b, fid = field(tmp_path, forecast_core="physics")
++    for _ in range(4):
++        b.recommend(fid, now=NOW, weather=_wx([]))
++    assert seen == [0, 0, 0, 0]
++    assert b.load_field(fid)["state"]["rain_waits"] == 1
++
++
++def test_partial_ensemble_does_not_invent_dry_hours():
++    from hydrobrain.brain import _align_members
++    times = [NOW + timedelta(hours=h) for h in range(10)]
++    ens = dict(times=times[:-1], members=np.ones((5, 9)))
++    assert _align_members(ens, times) is None
++
++
++def test_expert_parameters_survive_beginner_edit(tmp_path):
++    b, fid = field(tmp_path, theta_fc=0.35, theta_wp=0.15)
++    b.update_params(fid, {"area_m2": 200}, mode="beginner")
++    assert b.load_field(fid)["params"]["theta_fc"] == 0.35
++    assert b.load_field(fid)["params"]["area_m2"] == 200
++
++
++def test_timezone_override_is_used(tmp_path):
++    b, fid = field(tmp_path, tz_offset_h=0)
++    r = b.recommend(fid, now=NOW, weather=_wx([]))
++    assert r["time_local"] == NOW.strftime("%Y-%m-%d %H:%M")
++
++
++@pytest.mark.parametrize("broken", ["empty", "missing", "nan", "gap"])
++def test_invalid_weather_rejected_without_state_write(tmp_path, broken):
++    b, fid = field(tmp_path)
++    wx = _wx([])
++    if broken == "empty":
++        wx["times"] = []
++    elif broken == "missing":
++        wx.pop("temperature_2m")
++    elif broken == "nan":
++        wx["temperature_2m"][:] = np.nan
++    else:
++        wx["times"][3] += timedelta(minutes=30)
++    with pytest.raises(ValueError):
++        b.recommend(fid, now=NOW, weather=wx)
++    assert b.load_field(fid)["state"] is None
++
++
++def test_late_irrigation_matches_chronological_replay(tmp_path):
++    b1, f1 = field(tmp_path / "late", forecast_core="physics")
++    b2, f2 = field(tmp_path / "ordered", forecast_core="physics")
++    b1.recommend(f1, now=NOW, weather=_wx([]))
++    for b, fid in ((b1, f1), (b2, f2)):
++        b.log_irrigation(fid, 20, time=NOW - timedelta(hours=2))
++    r1 = b1.recommend(f1, now=NOW, weather=_wx([]))
++    r2 = b2.recommend(f2, now=NOW, weather=_wx([]))
++    assert r1["moisture"]["depletion_mm"] == r2["moisture"]["depletion_mm"]
++    assert b1.load_field(f1)["events"]["irrigation"][0]["applied"]
++
++
++def test_training_csv_has_one_header_under_concurrent_writes(tmp_path):
++    import csv
++    from hydrobrain.learning import append_training_row
++    path = str(tmp_path / "training.csv")
++    with ThreadPoolExecutor(max_workers=8) as pool:
++        list(pool.map(lambda i: append_training_row(path, {"a": i}, {"y": 1}, {"id": i}), range(40)))
++    with open(path, newline="") as stream:
++        rows = list(csv.DictReader(stream))
++    assert len(rows) == 40 and len({r["id"] for r in rows}) == 40
++
++
++@pytest.mark.parametrize("hours", [0.5, 23.75, 24.5])
++def test_ml_rollout_uses_exact_elapsed_time(hours):
++    from hydrobrain.ml_forecast import rollout
++    class ConstantCore:
++        def predict(self, *args):
++            return 0.24
++    wx = _wx([])
++    bundle = dict(times=wx["times"], precip=wx["precipitation"],
++                  eto=np.zeros(len(wx["times"])), temp=wx["temperature_2m"],
++                  rh=wx["relative_humidity_2m"], sw=wx["shortwave_radiation"], wind=wx["wind_speed_10m"])
++    now = NOW + timedelta(hours=hours)
++    result, hist = rollout(ConstantCore(), "RZ", NOW, 0.5, None, None, now, bundle)
++    assert result == pytest.approx(0.5 + 0.24 * hours / 24)
++    assert hist[-1][0] == now
++
++
++def test_location_change_invalidates_cached_climate_and_local_model(tmp_path):
++    b, fid = field(tmp_path)
++    f = b.load_field(fid)
++    f.update(era5l_clim={"RZ": [0.1, 0.3]}, ml_local={"enabled": True}, ml_log=[{"old": True}])
++    b._save(f)
++    b.update_params(fid, {"lat": 50.1}, mode="expert")
++    f = b.load_field(fid)
++    assert "era5l_clim" not in f
++    assert f["ml_local"] is None and f["ml_log"] == []
+--- a/ui/index.html
++++ b/ui/index.html
+@@ -192,6 +192,7 @@
+   if(!r.ok) throw new Error((body && body.detail) ? (typeof body.detail==="string"?body.detail:JSON.stringify(body.detail)) : ("HTTP "+r.status));
+   return body;
+ }
++window.addEventListener("unhandledrejection", event => { toast(event.reason?.message || "Не вдалося виконати дію"); event.preventDefault(); });
+ function serverDown(){
+   const b=$("#srvBanner"); if(b) b.classList.remove("hidden");
+ }
+@@ -384,13 +385,14 @@
+       <div class="lbl" style="left:${pos(m.theta_fc)}%">FC ${(m.theta_fc*100).toFixed(0)}%</div></div>`;
+   const tiles=[];
+   if(am && r.orientative && am.range_mm){ tiles.push([am.range_mm[0]+"–"+am.range_mm[1]+" мм","орієнтовна норма"]); }
+-  if(am && am.cycles && am.cycles.cycles>1){ tiles.push([am.cycles.cycles+" × "+am.cycles.on_min+" хв",
+-      "цикли поливу, пауза "+am.cycles.soak_min+" хв (разом ≈ "+am.cycles.total_h+" год)"]); }
++  if(am && am.cycles && am.cycles.cycles>1){ tiles.push([am.cycles.cycles+" циклів, до "+am.cycles.on_min+" хв",
++      "останній "+(am.cycles.last_on_min??am.cycles.on_min)+" хв; пауза "+am.cycles.soak_min+" хв (разом ≈ "+am.cycles.total_h+" год)"]); }
+   else if(am){ tiles.push([am.gross_mm+" мм","норма (л/м²)"]); if(am.m3_total!=null) tiles.push([am.m3_total+" м³","на всю площу"]); if(am.duration_min!=null) tiles.push([fmtMin(am.duration_min),"тривалість"]); }
+   tiles.push([(m.theta*100).toFixed(1)+"%","вологість ±"+(m.theta_sigma*100).toFixed(1)]);
+   tiles.push([m.available_water_pct+"%","доступної води"]);
+   tiles.push([r.today.eto_local_mm_day+" мм","ETo за добу"]);
+-  tiles.push([Math.round(r.risk.p_stress_48h*100)+"%","ризик стресу 48 год"]);
++  const has48 = !r.risk.probability_horizons_available || r.risk.probability_horizons_available.includes(48);
++  tiles.push(has48 ? [Math.round(r.risk.p_stress_48h*100)+"%","ризик стресу 48 год"] : ["—","для ризику за 48 год бракує прогнозу"]);
+   const fd=r.forecast_days.map(d=>`<tr><td>${esc(d.date)}</td><td>${d.rain_mm}</td><td>${d.rain_prob_max==null?"—":Math.round(d.rain_prob_max)+"%"}</td><td>${d.eto_mm}</td><td>${d.tmin}…${d.tmax}°</td></tr>`).join("");
+   $("#recPanel").classList.remove("hidden");
+   $("#recPanel").innerHTML=`
+--- /dev/null
++++ b/ЗМІНИ_1.10_→_1.11.md
+@@ -0,0 +1,135 @@
++# HydroBrain: що змінено у версії 1.11 відносно версії 1.10
++
++Версія 1.11 відповідає на два питання, яких досі не було в роботі: **чи можна вірити ймовірності стресу**, яку видає система, і **чи справді вона краще поливає**, ніж прості стратегії. Обидва експерименти — у `ds/stage4/`, результати — у `ds/stage4/results/`. За результатами калібрування ймовірність стресу в застосунку тепер перекалібровується.
++
++---
++
++## 1. Калібрування ймовірності стресу
++
++### Постановка
++- **Дані:** 14 точок України, 15 травня – 30 вересня 2024–2025 — роки, для яких є справжній архівний прогноз погоди.
++- **Поле:** кукурудза, чорнозем типовий, крапельний полив (довідникові параметри).
++- **Стан поля** задається з ERA5-Land, як від ідеального датчика: дефіцит = (1 − w₀–₁₀₀)·TAW за глибиною коренів.
++- **Рішення:** HydroBrain ухвалює його за справжнім прогнозом погоди (Монте-Карло, 100 сценаріїв) двічі — лише фізика і фізика + ML-ядро, як у застосунку.
++- **«Подія»:** за фактом ERA5-Land дефіцит перетнув поріг стресу RAW протягом 48 год.
++- **Вибірка:** лише доби, коли стресу ще немає, бо саме тоді ймовірність вирішує «поливати / ні». Таких рішень 1 036; подія сталася в 15.6% з них.
++- **Перекалібрування:** ізотонічна регресія з перехресною перевіркою за роками (навчання на 2024 → перевірка на 2025 і навпаки).
++
++### Результати
++
++| | Brier score | ECE (похибка калібрування) | Стрес, коли система каже «не поливати» (p < 0.5) | Частка рішень «діяти» |
++|---|---|---|---|---|
++| Лише фізика, як є | 0.090 | 0.150 | 3.7% | 16.8% |
++| Лише фізика, перекалібрована (CV) | **0.054** | **0.017** | 1.9% | 19.9% |
++| Фізика + ML (застосунок до 1.11), як є | 0.077 | 0.108 | **10.7%** | 7.9% |
++| Фізика + ML, перекалібрована (CV) | 0.068 | 0.044 | 3.5% | 19.8% |
++
++**Діаграма надійності:** `fig1_reliability.png`.
++
++**Що виявилось:**
++1. **Ймовірності не були відкалібровані.** Сира частка сценаріїв «розмазана»:
++   - фізика: від 0.1 до 0.35 стрес не стався жодного разу, а при 0.55–0.65 стався у 72–82% випадків;
++   - ML-версія: при 0.45 стрес стався в 62% випадків.
++2. **Найважливіше для застосунку:** ML-ядро (природна траєкторія волога-оптимістичніша за фізику) зсуває ймовірності вниз. З порогом 0.5 система з ML казала «не поливати» в 92% випадків — і в 10.7% з них стрес усе ж наставав, утричі частіше, ніж у фізики. **Це помилка версій 1.6–1.10, яку виявив цей експеримент.**
++3. **Перекалібрування виправляє це на незалежному році:** ECE для ML-версії 0.108 → 0.044, стрес після «не поливати» 10.7% → 3.5%.
++4. Чесно: після перекалібрування ймовірності фізики навіть трохи надійніші (Brier 0.054 проти 0.068). Тобто для цього питання ML-ядро не дає переваги.
++
++### Що змінено в застосунку
++- **`hydrobrain/models/pstress_calibration.json`** — дві ізотонічні криві (для рішень з ML-ядром і без), навчені на всіх 1 036 рішеннях.
++- **`decide()`** перекалібровує ймовірність стресу (усі горизонти) перед порогами рішення; крива обирається за тим, чи працює ML-ядро.
++- **У відповіді:** `risk.p_stress_48h` — вже калібрована; `risk.p_stress_48h_raw` — сира частка сценаріїв; `risk.calibrated` — чи застосовано криву.
++- **Новий параметр** `pstress_calibration` (за замовчуванням увімкнено; у режимі експерта можна вимкнути).
++
++**Обмеження:** криву навчено в одних умовах (кукурудза, крапельний полив, «правда» — ERA5-Land, горизонт 48 год), а застосовується вона до всіх горизонтів і культур. Для інших культур і способів поливу калібрування бажано повторити.
++
++---
++
++## 2. Бектест поливу
++
++### Постановка
++**«Справжнє поле» (віртуальне)** — фізична модель, у якої для кожної точки підібрано запас води (×TAW) і транспірацію (×Kc), щоб без поливу вона найкраще відтворювала ERA5-Land 2016–2021. Підбір — за сіткою, з перезапуском від ERA5-Land щотижня. Підібрані параметри:
++- запас води ×1.0–1.25, транспірація ×0.6–0.9 від довідника;
++- середня похибка відтворення ERA5-Land — 0.0079 відносних одиниць проти 0.0126 з довідниковими параметрами.
++
++**HydroBrain справжніх параметрів не знає:**
++- працює з довідниковими параметрами (кукурудза, чорнозем, крапельний полив);
++- щодня о 00:00 UTC отримує показ «датчика» з шумом 0.02 відносних одиниць;
++- рішення ухвалює за справжнім прогнозом погоди 2024–2025;
++- поле живе за фактичною погодою.
++
++**Спрощення:** стан HydroBrain береться прямо з показу датчика, без фільтра Калмана; ML-ядро — модель шару 0–100 см.
++
++**Стратегії** (полив 15 травня – 15 вересня, оцінка — до 30 вересня):
++
++| Стратегія | Опис |
++|---|---|
++| Без поливу | довідково |
++| За графіком | 25 мм кожні 7 діб |
++| Поріг за датчиком | якщо відносна вологість < 0.5 — полити до польової вологоємності |
++| HydroBrain: лише фізика / фізика + ML | як у застосунку до 1.11 |
++| HydroBrain ML з порогом 0.3 і 0.7 | крива «вода ↔ стрес» |
++| HydroBrain: фізика / ML з каліброваною ймовірністю | як у застосунку 1.11 |
++| Оракул | знає справжні параметри поля, справжній стан і майбутню погоду — верхня межа |
++
++**Метрики:**
++- вода за сезон і кількість поливів;
++- доби стресу (Ks < 1);
++- втрати на дренаж і стік;
++- орієнтовна втрата врожаю за FAO-33: 1 − Ya/Ym = Ky·(1 − ΣT/ΣTпот), Ky = 1.25 для кукурудзи.
++
++### Результати (середнє за 28 сезонів: 14 точок × 2024–2025)
++
++| Стратегія | Полив, мм | Поливів | Діб стресу | Втрати, мм | Втрата врожаю, % |
++|---|---|---|---|---|---|
++| Без поливу | 0 | 0 | 84.6 | 2 | 51.6 |
++| За графіком (25 мм / 7 діб) | 450 | 18.0 | 13.0 | 59 | 2.1 |
++| Поріг за датчиком | 336 | 8.6 | 21.7 | 6 | 4.4 |
++| HydroBrain: лише фізика | 318 | 8.2 | 0.5 | 3 | 0.03 |
++| HydroBrain: фізика + ML (до 1.11) | 311 | 8.0 | 1.4 | 2 | 0.06 |
++| HydroBrain ML, поріг 0.3 | 333 | 8.6 | 0.2 | 4 | 0.01 |
++| HydroBrain ML, поріг 0.7 | 303 | 7.8 | 5.9 | 2 | 0.33 |
++| HydroBrain: фізика, калібрована ймовірність | 317 | 8.1 | 0.4 | 3 | 0.02 |
++| **HydroBrain 1.11: ML + калібрована ймовірність** | **320** | **8.2** | **0.6** | **4** | **0.03** |
++| Оракул (знає все) | 318 | 8.2 | 0.1 | 2 | 0.00 |
++
++**Сезонів зі стресом понад 2 доби** (з 28): без поливу — 27, за графіком — 14, поріг — 25, HydroBrain ML до 1.11 — 10, **HydroBrain 1.11 — 1**, оракул — 0.
++
++**Графіки:** `fig2_water_vs_stress.png` (вода і стрес за стратегіями), `fig3_threshold_tradeoff.png` (вибір порогу).
++
++**Що з цього випливає:**
++1. **HydroBrain витрачає на 29% менше води, ніж полив за графіком** (320 проти 450 мм), і при цьому має в 20 разів менше діб стресу (0.6 проти 13). Медіана економії за сезонами — 22%. У 2 сезонах із 28 HydroBrain полив більше, ніж графік: це сухі сезони, де графіка не вистачало.
++2. **Простий поріг за датчиком гірший за все, крім «без поливу»:** він реагує, коли стрес уже почався, і не враховує прогноз — 21.7 доби стресу.
++3. **HydroBrain близький до оракула:** та сама вода (320 проти 318 мм), 0.6 проти 0.1 доби стресу. У цьому світі запас для покращення невеликий.
++4. **ML-ядро в рішеннях переваги не дає.** Фізика без ML і з ML — практично однакові (318 / 0.5 проти 320 / 0.6 після калібрування). Перевага ML у точності прогнозу вологості (Етапи 2–3) в цьому бектесті не перетворилась на кращі рішення: їх визначають щоденний показ датчика, максимальна разова норма і прогноз опадів. Це чесний і важливий для захисту результат.
++5. **Калібрування ймовірності знадобилось саме для ML-версії:** без нього сезонів зі стресом понад 2 доби було 10, з ним — 1. Ціна — +9 мм води за сезон.
++6. **Поріг рішення — реальний важіль компромісу:** 0.3 → 333 мм і 0.2 доби стресу; 0.7 → 303 мм і 5.9 доби. Значення 0.5 з каліброваною ймовірністю — розумна середина.
++7. **Втрати води:** графік губить 59 мм за сезон на дренаж (поливає, коли ґрунт ще вологий), HydroBrain — 3–4 мм.
++
++### Чесні застереження
++- **Це світ фізики.** «Справжнє поле» — та сама фізична модель з іншими параметрами. Це чесніше, ніж прогін моделі самої на собі (HydroBrain не знає справжніх параметрів і стану, рішення — за справжнім прогнозом), але не реальне поле. Структурні помилки фізики (наприклад, ґрунтові води з Етапу 3) бектест не виявить.
++- **Лише 2 сезони** (роки зі справжнім прогнозом) і одна культура зі способом поливу.
++- **Графік не оптимізований:** одна типова схема. Краще налаштований графік (наприклад, 30 мм кожні 6 діб у липні) був би ближчим до HydroBrain.
++- **Ідеалізований датчик:** щоденний, без пропусків, з малим шумом.
++- **Втрата врожаю** — орієнтовна (лінійна модель FAO-33), не прогноз урожаю.
++
++---
++
++## Нові та змінені файли
++
++| Файл | Що |
++|---|---|
++| `ds/stage4/common.py` | спільне: дані сезону з прогнозом, вікна прогнозу, ознаки ML |
++| `ds/stage4/pstress_calibration.py` | калібрування ймовірності стресу (≈ 3 хв) |
++| `ds/stage4/backtest.py` | бектест: підбір «справжнього поля», стратегії, звіт (≈ 15 хв + `--extra` ≈ 5 хв) |
++| `ds/stage4/results/` | `pstress_metrics.json`, `pstress_decisions.csv.gz`, `fig1_reliability.png`, `backtest_seasons.csv`, `backtest_summary.csv`, `backtest_summary.md`, `backtest_truth_params.json`, `fig2_water_vs_stress.png`, `fig3_threshold_tradeoff.png` |
++| `hydrobrain/models/pstress_calibration.json` | криві перекалібрування |
++| `hydrobrain/decision.py` | перекалібрування `p_stress`; у `risk` — `p_stress_48h_raw`, `calibrated` |
++| `hydrobrain/params.py` | параметр `pstress_calibration` |
++| `tests/test_stage4_111.py` | 2 тести: криві монотонні й обмежені; відповідь містить сиру і калібровану ймовірність, параметр вимикає калібрування |
++
++Інші модулі не змінено. Версія пакета: 1.10.0 → 1.11.0.
++
++## Як перевірено
++- **75 автотестів** проходять (у 1.10 — 73).
++- **Калібрування** перевірено перехресно за роками: криву, навчену на одному році, перевіряли на іншому.
++- **Бектест відтворюваний:** `python -m ds.stage4.backtest`, потім `python -m ds.stage4.backtest --extra`. Потрібні сирі дані `data/raw` (`ds/fetch_data.py` разом з `--only-prev-runs`).
+--- /dev/null
++++ b/ЗМІНИ_1.2_→_1.8.md
+@@ -0,0 +1,254 @@
++# HydroBrain: що змінено у версії 1.8 відносно версії 1.2
++
++Цей документ описує **всі** відмінності версії 1.8 від архіву `hydrobrain_v1_2.zip` (версія 1.2.0, «Виправлення за критичним оглядом 1.1»). Хронологічна історія — у `CHANGELOG.md`; тут — зведений опис «було в 1.2 → стало в 1.8» для кожної частини проєкту.
++
++---
++
++## 1. Коротко
++
++- **Код версії 1.2 збережено повністю.** Фізичну модель (`balance.py`), ґрунти (`soil.py`, `databases.py`), метеорологію (`meteo.py`), синтетичну погоду і всі механізми 1.2 (два шари кореневої зони, Калман на 4 змінні, сніг і мерзлий ґрунт, ASCE-EWRI, довідникові константи чорноземів, λ = 0.05 у CN, інтенсивність дощування, калібрування датчика `sensor_calib`, обмеження «чекаємо дощ», атомарне збереження з блокуванням, POST для рекомендації) не змінено. У коді пакета з версії 1.2 видалено або переписано лише 26 рядків; додано ~1 370.
++- **Додано результати DS-дослідження**, яке велося паралельно з 1.2 (у `CHANGELOG.md` — записи з префіксом «DS-»): дані, експерименти на ERA5-Land і реальних датчиках, ML-ядро прогнозу, калібрування ґрунту, оцінка стану поля без датчика, локальне донавчання.
++- **Нове у 1.8 — варіант «Г»:** для поля без датчика рекомендація стала **орієнтовною** (та сама дія, але норма діапазоном, впевненість «низька», порада виміряти), а власник застосунку може вимкнути рекомендації без датчика.
++- **Виправлено одну помилку версії 1.2** (довідникові константи чорнозему підміняли текстуру ґрунту, задану експертом).
++- **Перевірено:** 59 автотестів (у 1.2 — 42) проходять; експерименти перераховано з фізикою 1.2.
++
++---
++
++## 2. Звідки ця версія
++
++Після 1.1 розробка розійшлася на дві гілки:
++
++| Гілка | Що в ній | Де описано |
++|---|---|---|
++| **1.2.0** (ваш архів) | Виправлення за критичним оглядом: фізика, фільтр, сніг, ASCE, константи ґрунтів, збереження, API | `CHANGELOG.md`, запис [1.2.0] |
++| **DS-1.1.1 … DS-1.7.0** | Дані, Етапи 2–3, калібрування ґрунту, ML-ядро, режими без датчика | `CHANGELOG.md`, записи [DS-…] |
++
++Версія 1.8 = **1.2 як основа** + перенесені зміни гілки DS + варіант «Г». Номери гілки DS у `CHANGELOG.md` мають префікс «DS-», щоб не плутати, наприклад, DS-1.2.0 (Етап 2) з вашою 1.2.0.
++
++---
++
++## 3. Як тепер працює рекомендація
++
++**Було в 1.2:** параметри → погода → фізика (два шари) → фільтр Калмана за показами датчика → Монте-Карло → правила → пояснення. Без датчика стан поля бралося з прогнозної моделі Open-Meteo, змішаної із сезонним припущенням, і далі прокручувалось фізикою без поправок. Рекомендація без датчика мала ту саму форму і точність формулювань, що й з датчиком.
++
++**Стало в 1.8:** до того самого конвеєра додано три шари.
++
++1. **Оцінка поточного стану** — за пріоритетом:
++
++   | Режим (`forecast_core.state_source`) | Коли | Звідки стан |
++   |---|---|---|
++   | `sensor` | показ датчика ≤ 48 год | фільтр Калмана, як у 1.2 |
++   | `sensor_stale` | показ 2–10 діб тому | показ, прокручений ML-ядром до сьогодні, — «слабкий вимір» для фільтра |
++   | `reanalysis` | датчика немає / показ старший | ERA5-Land у точці (затримка ~5 діб), прокручений ML-ядром, — «слабкий вимір» з великою похибкою |
++   | `model_only` | нічого з наведеного (офлайн, немає ML) | фізика і сезонне припущення, як у 1.2 |
++
++   Похибки «слабких вимірів» взято з експерименту (розділ 6.4): для старого показу σ = 1.25·(0.024 + 0.0087·L) відносних одиниць (L — вік у добах), для реаналізу σ = 0.28. «Слабкий вимір» подається у фільтр не частіше ніж раз на 20 год.
++
++2. **Прогноз природної (без поливу) зміни вологості на 24 і 48 год** — ML-ядро, навчене на ERA5-Land 14 українських точок. Траєкторії фізики в Монте-Карло зсуваються, щоб на 24 і 48 год збігтися з прогнозом ML; похибка ML додається як розкид сценаріїв. Полив, втрати і норму, як і раніше, рахує фізика.
++
++3. **Форма рекомендації без датчика** (варіант «Г», розділ 4).
++
++Якщо ML недоступне (немає scikit-learn/моделей) або в режимі експерта обрано `forecast_core = physics`, прогноз робить лише фізика 1.2.
++
++---
++
++## 4. Варіант «Г»: поле без датчика
++
++**Чому.** Експеримент (розділ 6.4) показав, що без датчика система правильно розрізняє «сухо / волого» приблизно в 3 випадках із 4 і пропускає близько третини сухих днів. Точна норма в міліметрах у такій ситуації створює хибне враження точності.
++
++**Що бачить користувач, коли стан — `reanalysis` або `model_only`:**
++
++| | 1.2 | 1.8 (`orientative`, за замовчуванням) |
++|---|---|---|
++| Заголовок | «Поливати зараз: 39 мм (39 л/м²)» | «Ймовірно, потрібен полив: орієнтовно 35–40 мм» |
++| Інші дії | «Відкласти полив …», «Не поливати» | «Ймовірно, полив знадобиться згодом …», «Ймовірно, полив поки не потрібен» |
++| Норма | точне число | діапазон: 10–90% сценаріїв Монте-Карло, округлено до 5 мм, точне значення завжди всередині |
++| Впевненість | розрахункова | завжди «низька» (≤ 0.3) |
++| Перше пояснення | причина рішення | застереження про точність без датчика + порада виміряти (≥ 1 раз на тиждень) |
++| Сама дія (поливати / відкласти / ні) | — | **не змінюється** (перевірено тестом) |
++
++**Перемикач для власника застосунку** — `HydroBrain(no_sensor_policy=…)` або змінна середовища `HYDRO_NO_SENSOR_POLICY`:
++- `orientative` — як описано вище (за замовчуванням);
++- `off` — без датчика рекомендація не видається: дія `measure` («Потрібен вимір вологості»), `amount = null`; стан поля при цьому оновлюється;
++- `full` — як у 1.2 (повна рекомендація з точною нормою).
++
++Старий показ датчика (`sensor_stale`, до 10 діб) **не** вважається «без датчика»: експеримент показав високу точність такої оцінки (87–94%).
++
++---
++
++## 5. Зміни по файлах
++
++### 5.1. `hydrobrain/brain.py` (+411 / −6 рядків)
++
++**Нові методи:**
++- `ml_core` (властивість) — ліниве завантаження ML-ядра; при невдачі — причина в `_ml_core_note`.
++- `_sensor_readings()` — покази датчика в м³/м³ **з тим самим калібруванням 1.2** (`θ = a + b·показ − sensor_offset`).
++- `_weather_bundle()` — погода для ознак ML; ETo тут рахується за **FAO-56** (`method="fao56"`), бо на ньому вчилось ядро, хоча в балансі з 1.2 діє ASCE.
++- `_era5l_state()` — вологість ERA5-Land у точці: кліматологія (3 сезони, кешується в полі як `era5l_clim`) і останні доби.
++- `_state_context()` — вибір режиму стану (розділ 3).
++- `_ml_forecast()` — прогноз ML на 24/48 год, зсув і σ для Монте-Карло, локальна поправка.
++- `_ml_log()`, `_local_path()`, `_load_local()`, `finetune_local()` — журнал ознак (≤ 1 запис/добу, ≤ 800) і локальне донавчання.
++- `_apply_soil_cal()`, `calibrate_soil()` — калібрування θFC/θWP за показами датчика.
++- `_reset_event_flags()` — після скидання стану покази і поливи знову входять в історію.
++- `_measurement_required()` — відповідь для політики `off`.
++- Функція модуля `_make_orientative()` — перетворення рішення на орієнтовне.
++
++**Змінено:**
++- `__init__` — новий параметр `no_sensor_policy` (+ змінна середовища), перевірка допустимих значень.
++- `update_params` — калібрування ґрунту зберігається при зміні інших параметрів і скидається при зміні ґрунту; при скиданні стану скидаються позначки «використано» в подіях. **Це виправляє помилку, що була і в 1.2:** після зміни ґрунту/культури історія відтворювалась без старих показів датчика і поливів.
++- `recommend`:
++  - погода завантажується щонайменше за 18 діб до моменту запиту (прокрутка до 10 діб + 7 діб ознак); відтворення історії фізики, як і раніше, починається від збереженого стану;
++  - поливи, старші за початок відтворення історії (з допуском 6 год), пропускаються — щоб після скидання стану вони не «звалювались» у першу годину;
++  - після фільтра Калмана — оцінка стану (`_state_context`), за потреби «слабкий вимір» (`update_dr`), оновлення Dr і Du;
++  - прогноз ML-ядра і передача зсуву в `decide`;
++  - нові причини `state_reanalysis`, `state_stale_sensor`, `orientative_no_sensor`;
++  - варіант «Г» і політика `off`;
++  - нові поля відповіді: `forecast_core`, `orientative`.
++- Лічильник «чекаємо дощ» (1.2), блокування, атомарне збереження — без змін.
++
++### 5.2. `hydrobrain/assimilation.py` (+29)
++Новий метод `SoilMoistureKalman.update_dr(dr_obs, sigma_mm, …)` — «слабкий вимір» дефіциту кореневої зони. Написаний під Калман 1.2 на 4 змінні: оновлює Dr і Du (через їхню кореляцію ρ = 0.7), **не** чіпає зміщення датчика і поправку Kc — інакше старий показ датчика врахувався б двічі. Форма Джозефа, як і в основному оновленні. Якір польової вологоємності з підтвердженням датчиком (1.2) не змінено.
++
++### 5.3. `hydrobrain/decision.py` (+24 / −2)
++- `decide(…, dr_shift=None, dr_shift_sd=None)` — зсув траєкторій без поливу і з поливом від ML-ядра, з власною похибкою на кожен сценарій. Контрфакт «без дощу» навмисно лишається чистою фізикою. Без цих аргументів поведінка така сама, як у 1.2.
++- `amount.gross_p10_p90` — розкид норми за сценаріями (10–90%), з тими самими правилами, що й для медіанної норми (буфер під дощ, обмеження одного поливу). Використовується для діапазону в орієнтовній рекомендації.
++
++### 5.4. `hydrobrain/explain.py` (+41 / −2)
++- Дія `measure` («Потрібен вимір вологості») і орієнтовні формулювання «Ймовірно, …».
++- Тексти причин `state_reanalysis`, `state_stale_sensor`, `orientative_no_sensor`, `measurement_required`.
++- `build(…, orientative=False)` — для орієнтовної рекомендації заголовок із діапазоном, застереження про точність першим, впевненість «низька».
++
++### 5.5. `hydrobrain/params.py` (+10 / −1)
++- Новий параметр режиму експерта `forecast_core` (`ml` / `physics`).
++- **Виправлення помилки 1.2:** якщо тип ґрунту не вибрано і SoilGrids недоступний, довідникові θFC/θWP чорнозему типового застосовувались навіть тоді, коли експерт задав власну текстуру. Пісок 87% отримував θFC = 0.408. Тепер довідникові константи застосовуються, лише якщо користувач не задав `sand`, `clay`, `om` чи `bd`. Вибраний тип ґрунту з довідника працює, як у 1.2. Тест: `test_user_texture_is_not_overridden_by_default_handbook_constants`.
++
++### 5.6. `hydrobrain/sources.py` (+18)
++`era5land_soil(lat, lon, start, end)` — вологість ERA5-Land (шари 0–7, 7–28, 28–100 см) з архіву Open-Meteo, кеш 12 год.
++
++### 5.7. Нові модулі
++- **`hydrobrain/ml_forecast.py`** — ML-ядро: завантаження моделей і перевірка версії scikit-learn, вибір шару за глибиною коренів (≤ 0.4 м → 0–30 см; ≤ 0.75 м → 0–55 см; глибше → 0–100 см), масштаб датчика, ознаки погоди, прокрутка стану (`rollout`), зсув і σ для Монте-Карло, локальна поправка `LocalResidual`, константи похибок режимів без датчика.
++- **`hydrobrain/soil_calibration.py`** — оцінка θFC (вологість через 48 год після сильного зволоження) і θWP (нижня межа сухих періодів) за показами датчика, змішування з довідником за кількістю подій.
++- **`hydrobrain/models/ml_core_v1.joblib`** (6.4 МБ) і **`ml_core_v1.json`** — 8 моделей (4 шари × 2 горизонти) і їхня якість.
++
++### 5.8. `server.py` (+22)
++- `POST /fields/{id}/calibrate_soil` і `POST /fields/{id}/finetune_local` — обидва під блокуванням поля (механізм 1.2).
++- Опис змінної `HYDRO_NO_SENSOR_POLICY` у заголовку файлу.
++- POST/GET для рекомендації — як у 1.2.
++
++### 5.9. `ui/index.html` (+48 / −2)
++- Блок «Стан ґрунту / прогноз»: звідки взято стан і що прогнозувало; без свіжого датчика — підсвічений, з порадою виміряти.
++- Орієнтовна рекомендація: банер, плитка «орієнтовна норма X–Y мм», у поле запису поливу підставляється середина діапазону.
++- Екран дії `measure`.
++- Кнопки «Калібрувати ґрунт» і «Донавчити на полі» в панелі датчика.
++- Виклик рекомендації через POST (1.2) не змінено. JavaScript перевірено на синтаксис.
++
++### 5.10. `ds/` — DS-дослідження
++- `fetch_data.py` (+42) — архів прогнозів погоди (`--prev-runs`, `--only-prev-runs`), подовжений період станції Fraye (до 2022-08-09), `--sites`, звіт про невдалі точки і код виходу, попередження про точки з висотою < 5 м.
++- `ismn.py` (+4 / −2) — виправлено пошук станції (на запит «hillan» знаходилось і «hillan2»).
++- **Нові:** `stage2/` (Україна, ERA5-Land, 6 моделей), `stage3/` (реальні датчики, крива «нове поле», режим без датчика), `core/train_core.py` (навчання ML-ядра, ≈ 1 хв), `data/processed/` (добові таблиці для відтворення).
++- `stage2/physics_runs.py` пристосовано до дво-шарової фізики 1.2: при старті від спостереженого стану верхній шар отримує ту саму відносну вологість.
++
++### 5.11. Тести (42 → 59)
++- `tests/test_no_sensor_policy.py` (новий, 7): орієнтовна рекомендація зберігає дію і прибирає хибну точність; політика `off`; свіжий і старий датчик не орієнтовні; реаналіз орієнтовний; недопустима політика; текстура експерта не підміняється довідником.
++- `tests/test_learning.py` (+173): калібрування θFC/θWP; ML-ядро (вмикання, перехід на фізику, агрегування погоди, масштаб); локальне донавчання вмикається лише за покращення; режими `reanalysis` і `sensor_stale`.
++- `tests/test_ds.py` (+9): точна назва станції ISMN.
++- `tests/test_hydrobrain.py` (±3): `test_dry_soil_means_irrigate` — поле без датчика тепер отримує орієнтовну рекомендацію; дія та сама.
++- Тести 1.2 (`test_v12.py`, `test_decisions.py` із двома датчиками) — без змін, проходять.
++
++### 5.12. Документація та інше
++- `HydroBrain_документація.pdf` — версія 1.8: новий розділ 14 (дані, результати, архітектура, обмеження), примітка в 7.3, кількість тестів; «Використані джерела» тепер розділ 15.
++- `README.md` — опис логіки 1.8, нові ендпоінти, нові поля відповіді, структура.
++- `requirements.txt` — scikit-learn і joblib тепер потрібні для ML-ядра (без них — лише фізика).
++- `examples/sample_response.json` — поля `orientative`, `forecast_core`, `amount.gross_p10_p90`.
++- `CHANGELOG.md` — новий запис 1.8.0, гілка DS, далі історія 1.2.
++- Версія пакета: 1.2.0 → 1.8.0.
++
++---
++
++## 6. Результати досліджень (перераховано з фізикою 1.2)
++
++Усі експерименти Етапів 2–3 і режиму без датчика перераховано після злиття — з дво-шаровою фізикою, ASCE і довідниковими константами версії 1.2. ML-моделі від фізики не залежать, тому їхні числа не змінились; фізика змінилась незначно, і **жоден висновок не змінився**.
++
++### 6.1. Україна, ERA5-Land (Етап 2), MAE % об., прогноз на 1 добу
++
++| Модель | Фактична погода | Справжній прогноз (2024–25) | Нова точка | Було з фізикою 1.1 (факт. погода) |
++|---|---|---|---|---|
++| Персистентність | 0.233 | 0.221 | 0.233 | 0.233 |
++| Фізика | 0.136 | 0.187 | 0.136 | 0.125 |
++| Фізика + калібрування | 0.085 | 0.138 | 0.086 | 0.083 |
++| **ML** | **0.046** | **0.099** | **0.049** | 0.046 |
++| ML + ознаки фізики | 0.045 | 0.100 | 0.049 | 0.046 |
++| Гібрид | 0.050 | 0.110 | 0.055 | 0.051 |
++
++Фізика 1.2 тут трохи гірша, ніж 1.1 (0.136 проти 0.125), найімовірніше через ASCE (+~6% ETo) щодо ERA5-Land, який рахує випаровування інакше. Порядок моделей той самий. Перевірка на Франції тепер охоплює 2013–2022 (раніше до 2019): ML 0.082, фізика 0.179.
++
++### 6.2. Реальні датчики ISMN (Етап 3), MAE % об., 1 доба
++
++| Модель | Поверхня 5 см | 0–30 см | 0–55 см |
++|---|---|---|---|
++| Персистентність | 0.926 | 0.541 | 0.390 |
++| ERA5-Land (довідково) | 1.199 | 0.548 | 0.373 |
++| Фізика (ґрунт HWSD) | 3.680 | 1.851 | 1.002 |
++| Фізика + калібрування | 0.765 | 0.420 | 0.300 |
++| ML з України | 1.125 | 0.447 | 0.283 |
++| **ML з України + локальна поправка** | 0.646 | 0.365 | **0.248** |
++| ML на датчиках цього місця | 0.633 | 0.354 | 0.249 |
++| Гібрид на каліброваній фізиці | 0.635 | 0.352 | 0.255 |
++
++### 6.3. Крива «нове поле»
++Не перераховувалась: її ключова модель (ML з України з масштабом від датчика) від фізики не залежить. Числа з фізикою 1.1 (`ds/stage3/results/learning_curve_summary*.md`): ML з України краща за персистентність з 7 діб даних датчика і з 60 діб наближається до моделі з 5 сезонами (0–55 см: 0.29 проти 0.25).
++
++### 6.4. Поле без датчика (поточний стан ґрунту)
++
++| Варіант оцінки (0–30 / 0–55 см) | Точність «сухо/волого» | Знайдено сухих діб | Хибне «сухо» | Кореляція |
++|---|---|---|---|---|
++| Кліматологія ERA5-Land | 0.72 / 0.73 | 0.59 / 0.73 | 0.16 / 0.26 | 0.56 / 0.57 |
++| Фізика без датчика (логіка 1.2) | 0.69 / 0.66 | 0.87 / 0.86 | **0.49 / 0.53** | 0.56 / 0.54 |
++| **ERA5-Land −5 діб + ML-ядро (1.8)** | **0.77 / 0.75** | 0.65 / 0.66 | 0.12 / 0.16 | **0.73 / 0.67** |
++| Показ датчика 7 діб тому + ML | 0.87 / 0.89 | 0.87 / 0.91 | 0.13 / 0.13 | 0.89 / 0.94 |
++| Показ датчика 3 доби тому + ML | 0.92 / 0.94 | 0.92 / 0.95 | 0.09 / 0.06 | 0.94 / 0.97 |
++
++Висновки, на яких побудовано варіант «Г»: (1) без датчика ERA5-Land + ML кращий за фізику, яка дає хибне «сухо» в половині вологих днів; (2) без датчика пропускається близько третини сухих днів, а ERA5-Land тут вологіший за реальний ґрунт (+0.13–0.16 відн. од.) — тому рекомендація без датчика має бути орієнтовною; (3) навіть показ тижневої давності піднімає точність до 87–89% — звідси порада виміряти.
++
++---
++
++## 7. Сумісність
++
++- **API:** усі ендпоінти 1.2 працюють так само. Додано два нові POST. Відповідь рекомендації має нові поля (`forecast_core`, `orientative`, `amount.range_mm`, `amount.gross_p10_p90`); старі поля на місці.
++- **Нове значення `action = "measure"`** з'являється лише за `HYDRO_NO_SENSOR_POLICY=off`. Клієнт, який його не знає, має обробляти невідому дію.
++- **Зміна поведінки за замовчуванням:** поле без датчика отримує орієнтовну рекомендацію (заголовок «Ймовірно, …», діапазон норми, впевненість «низька»). Щоб повернути поведінку 1.2 — `HYDRO_NO_SENSOR_POLICY=full`.
++- **Збережені поля 1.2** відкриваються без змін; нові ключі (`era5l_clim`, `state_source`, `ml_log`, `ml_local`, `soil_calibration`) додаються за потреби.
++- **scikit-learn:** моделі збережено зі scikit-learn 1.8. З іншою версією система попередить і перейде на фізику — тоді виконайте `python -m ds.core.train_core`.
++
++---
++
++## 8. Як розв'язано конфлікти злиття
++
++| Місце | Що конфліктувало | Рішення |
++|---|---|---|
++| Фільтр Калмана | 1.2: 4 змінні [Dr, b, k, Du]; DS: «слабкий вимір» писався для 3 змінних | `update_dr` переписано для 4 змінних, з оновленням Du через кореляцію |
++| Якір FC | обидві гілки змінювали якір | лишено варіант 1.2 (з підтвердженням датчиком) |
++| ETo | 1.2: ASCE у балансі; ML-ядро вчилось на FAO-56 | баланс — ASCE (1.2), ознаки ML — FAO-56 |
++| Покази датчика для ML | 1.2 додала `sensor_calib` | ML і калібрування ґрунту беруть покази з тим самим калібруванням |
++| Тест «сухий ґрунт → полив» | поле без датчика тепер орієнтовне | тест перевіряє дію і орієнтовне формулювання |
++| Дві гілки з номером 1.2.0 | конфлікт номерів у `CHANGELOG.md` | записи DS — з префіксом «DS-» |
++
++---
++
++## 9. Обмеження і неперевірене
++
++- Реальних вимірювань вологості з українських полів у даних немає; режим без датчика перевірено на одній групі французьких станцій у лісі на піску.
++- ML-ядро не знає культури; культуру враховує лише фізика.
++- Завантаження ERA5-Land з Open-Meteo (`era5land_soil`) перевірено лише на імітованих відповідях — потрібен перший живий запуск.
++- Перетворення прогнозу ML на дефіцит кореневої зони припускає, що датчик представляє кореневу зону; з двома шарами версії 1.2 це наближення (точніше було б порівнювати зі «своїм» шаром, як це робить фільтр).
++- Крива «нове поле» не перераховувалась із фізикою 1.2 (розділ 6.3).
++- Бектест політики поливу (вода / стрес / дренаж проти простих стратегій) не виконано; пороги рішень лишаються експертними.
++
++---
++
++## 10. Як перевірено
++
++- **59 автотестів** проходять (`python -m pytest -q tests/`): 42 тести версії 1.2 без змін логіки + 17 нових.
++- **Експерименти Етапів 2–3 і режиму без датчика** перераховано з фізикою 1.2 (розділ 6).
++- **HTTP API** перевірено наскрізно (поле → рекомендація без датчика → показ → рекомендація з ML → калібрування → донавчання); JavaScript інтерфейсу перевірено на синтаксис.
++- Сирі дані ISMN і похідні від них добові ряди в архів не включено (умови ISMN); для відтворення Етапу 3 покладіть свій архів ISMN у `ds/data/ismn/` і запустіть `python -m ds.stage3.build`.
+--- /dev/null
++++ b/ЗМІНИ_1.8_→_1.9.md
+@@ -0,0 +1,129 @@
++# HydroBrain: що змінено у версії 1.9 відносно версії 1.8
++
++Версія 1.9 відповідає на питання «чи знає користувач, яку модель коли використовувати». У 1.8 вибір моделей був переважно автоматичним, але там, де рішення лишалось за користувачем, рекомендацій не було. 1.9 закриває ці прогалини. Фізику, фільтр Калмана, ML-ядро, режими без датчика і варіант «Г» не змінено.
++
++Зроблено п'ять пунктів із запропонованих шести. **Пункт 3 — перенесення кнопки «Калібрувати ґрунт» у режим експерта з приміткою — свідомо не виконано** за рішенням автора; кнопка лишилась як у 1.8.
++
++---
++
++## 1. Панель «Як система рахує це поле»
++
++**Було в 1.8:** блок «Стан ґрунту / прогноз» показував джерело стану і ядро прогнозу. Порада була одна для всіх випадків без свіжого датчика («додайте вимір»), а про донавчання користувач не знав нічого.
++
++**Стало в 1.9:** кожна рекомендація містить поле `guidance` і панель в інтерфейсі з поточним режимом і **одним конкретним наступним кроком**:
++
++| `stage` | Коли | Що бачить користувач (наступний крок) |
++|---|---|---|
++| `no_sensor` | стан із реаналізу ERA5-Land або лише модель | «Додайте показ датчика або ручний вимір: на перевірці частка правильних рішень зросла з ~75% до 87–94%» |
++| `stale_sensor` | останній показ 2–10 діб тому | «Додайте свіжий показ: до 3 діб — ~92–94%, до 7 діб — ~87–89%» |
++| `learning` | свіжий датчик, < 60 діб даних для донавчання | «Даних поля: N із 60 діб. Ще ≈ M діб регулярних показів — і модель автоматично донавчиться (на перевірці −10–20% похибки)» |
++| `local` | донавчання ввімкнено | «Модель донавчена на даних цього поля: похибка менша на X%» (X — з відкладених даних поля); «оновлюється автоматично раз на 30 діб» |
++| `local_rejected` | донавчання перевірено, але не покращило | «Використовується загальна модель; повторна перевірка через ~30 діб нових даних» |
++| `physics_only` | ML вимкнено | причина: поле поза Україною / обрано «лише фізика» / ML недоступне, і що з цим робити |
++
++Додатково:
++- `event` — повідомлення, якщо саме під час цього запиту відбулось автоматичне донавчання;
++- якщо поле далеко від точок навчання ML, у повідомлення додається «Увага: …».
++
++Усі числа в підказках взято з перевірок (`ЗМІНИ_1.2_→_1.8.md`, розділ 6). Панель показується і на екрані «Потрібен вимір» (політика `off`).
++
++**Де:** `hydrobrain/brain.py` — `_guidance()`; `ui/index.html` — `guidanceBlock()`.
++
++---
++
++## 2. Автоматичне донавчання
++
++**Було в 1.8:** локальне донавчання — лише кнопкою «Донавчити на полі». Без даних кнопка повертала «замало прикладів», не кажучи, скільки ще чекати.
++
++**Стало в 1.9:**
++- При кожній рекомендації рахується кількість діб із мітками для донавчання (`ml_progress` у стані поля).
++- Коли їх **≥ 60**, донавчання запускається автоматично — з тією самою перевіркою, що й у 1.8: поправка вмикається лише якщо на останніх 25% прикладів поля зменшує похибку.
++- **Повторно** — не частіше ніж раз на 30 діб і лише якщо з'явились нові приклади. Це стосується і невдалої спроби, і оновлення вже ввімкненої поправки.
++- Помилка донавчання не ламає рекомендацію: вона потрапляє в `notes`.
++- Ручну кнопку «Донавчити на полі» в інтерфейсі тепер показано **лише для полів у режимі експерта**. Ендпоінт `POST /fields/{id}/finetune_local` лишився.
++- У `ml_local` записуються `auto` (автоматично чи вручну) і `n_rows` (на скількох прикладах).
++
++**Де:** `hydrobrain/brain.py` — `_local_rows()`, `_finetune_on()`, `_maybe_auto_finetune()`, `finetune_local()` (тепер обгортка); константи `LOCAL_MIN_ROWS = 60`, `LOCAL_RETRY_DAYS = 30` у `hydrobrain/ml_forecast.py`.
++
++**Чому 60 діб:** це мінімум, з яким `LocalResidual` погоджується навчатися ще з 1.8. На реальних датчиках донавчання на 5 сезонах зменшувало похибку на 12–18% (0–55 см: 0.283 → 0.248; 0–30 см: 0.447 → 0.365). Скільки саме діб потрібно, щоб воно почало допомагати, окремо не перевірялось: перевірка «вмикати лише при покращенні» страхує від передчасного ввімкнення.
++
++---
++
++## 3. Параметр «Ядро прогнозу» (`forecast_core`) з підказкою
++
++**Було в 1.8:** два варіанти (`ml` за замовчуванням, `physics`) без пояснення, коли який кращий.
++
++**Стало в 1.9:**
++- **Три варіанти:** `auto` — новий за замовчуванням: ML в Україні, фізика поза нею; `ml` — примусово ML; `physics` — лише фізика.
++- **Підказка параметра** (`effect_uk`, показується при наведенні у формі експерта): «ML точніша на всіх перевірках: ERA5-Land України зі справжнім прогнозом погоди — MAE 0.10 проти 0.19 % об./добу у фізики; реальні датчики 0–55 см — 0.28 проти 1.00. Фізику обирайте для поля поза Україною або для порівняння. Полив, поріг культури і норму в усіх варіантах рахує фізика.»
++- **Сумісність:** збережені поля з `forecast_core = "ml"` чи `"physics"` поводяться як у 1.8. Поля без цього параметра тепер отримують `auto`, що для українських координат означає те саме, що `ml` у 1.8.
++
++**Де:** `hydrobrain/params.py`.
++
++---
++
++## 4. Перевірка домену ML-ядра
++
++**Було в 1.8:** ML-ядро, навчене на 14 точках України, застосовувалось до будь-яких координат.
++
++**Стало в 1.9:**
++- `ml_forecast.in_domain(lat, lon)` перевіряє, чи точка в межах України (широта 44.0–52.5°, довгота 22.0–40.5°), і рахує відстань до найближчої з 14 точок навчання.
++- За `auto` поле **поза Україною** отримує прогноз від фізики; причина — у `forecast_core.off_cause = "domain"` і в панелі.
++- За `ml` (примусово) поза Україною або далі ніж **300 км** від точок навчання ML працює, але з позначкою `domain_note`: «поза умовами навчання ML-ядра (… км від найближчої точки) — точність може бути нижчою».
++- У відповіді `forecast_core.domain = {in_ukraine, nearest_train_km}`.
++- Поле поза Україною без датчика отримує стан `model_only`, а отже — орієнтовну рекомендацію (варіант «Г», 1.8).
++
++**Обмеження:** межі України задано прямокутником, тож він трохи захоплює сусідні території. Для точності домену цього достатньо: важлива близькість до умов навчання, а не адміністративний кордон, — а вона відображена відстанню до точок.
++
++**Де:** `hydrobrain/ml_forecast.py` (`TRAIN_POINTS`, `UA_BOX`, `FAR_KM`, `in_domain`), `hydrobrain/brain.py` (`_state_context`).
++
++---
++
++## 5. Розділ «Яку модель коли використовувати»
++
++Додано в **`README.md`** — таблиця «ситуація → що використовує система → чому (з числами)», плюс обмеження, — і в **документацію PDF** (розділ 14.4; «Обмеження» тепер 14.5). Це та сама зведена картина, що й у відповіді «в яких сценаріях яка модель краща і наскільки».
++
++---
++
++## 6. Інше
++
++- **`ml_forecast.nearest_reading`** — двійковий пошук замість перебору. Журнал донавчання (до 800 записів) тепер переглядається при кожній рекомендації, і для щогодинного датчика лінійний пошук був би повільним.
++- **`ui/index.html`:** панель `guidanceBlock`; у блоці джерела — `domain_note` замість загальної поради (порада тепер у панелі); кнопка донавчання — лише в режимі експерта. JavaScript перевірено на синтаксис.
++- **`examples/sample_response.json`:** поля `guidance` і оновлений `forecast_core`.
++- **Версія пакета:** 1.8.0 → 1.9.0; документація PDF — версія 1.9.
++
++---
++
++## 7. Нові поля відповіді рекомендації
++
++| Поле | Значення |
++|---|---|
++| `guidance.stage` | `no_sensor` / `stale_sensor` / `learning` / `local` / `local_rejected` / `physics_only` |
++| `guidance.title`, `guidance.message`, `guidance.next_step` | тексти для панелі |
++| `guidance.event` | лише якщо під час запиту відбулось автоматичне донавчання |
++| `forecast_core.domain` | `{in_ukraine, nearest_train_km}` |
++| `forecast_core.domain_note` | позначка «поза умовами навчання», якщо є |
++| `forecast_core.off_cause` | чому ML вимкнено: `domain` / `user` / `unavailable` |
++
++Усі поля 1.8 на місці.
++
++---
++
++## 8. Як перевірено
++
++- **65 автотестів** проходять (у 1.8 — 59). Нові — `tests/test_guidance_domain.py`:
++  - панель для поля без датчика і для поля, що збирає дані;
++  - панель для застарілого показу;
++  - домен: поле в Парижі за `auto` → фізика, за `ml` → ML з позначкою;
++  - вибір «лише фізика» і значення за замовчуванням `auto`;
++  - автоматичне донавчання запускається, коли даних достатньо, і не повторюється в ту саму добу;
++  - двійковий пошук показів.
++- **HTTP API перевірено наскрізно:** поле без датчика → панель `no_sensor`; після показу → `learning`; `info.mode` для показу кнопки.
++- Результати досліджень не перераховувались: 1.9 не змінює жодної моделі, лише вибір між ними і пояснення.
++
++## 9. Що лишилось без змін і неперевірене
++
++- Кнопка «Калібрувати ґрунт» — як у 1.8. Нагадування: на станціях ISMN калібрування θFC/θWP прогноз фізики не покращило (`CHANGELOG.md`, DS-1.4.0).
++- Поріг 60 діб і період 30 діб — розумні значення, а не підібрані на даних; захист від шкоди — перевірка «вмикати лише при покращенні».
++- Межі домену — прямокутник і 300 км — експертні.
++- Обмеження з `ЗМІНИ_1.2_→_1.8.md` (розділ 9) лишаються в силі.
+--- /dev/null
++++ b/ЗМІНИ_1.9_→_1.10.md
+@@ -0,0 +1,174 @@
++# HydroBrain: що змінено у версії 1.10 відносно версії 1.9
++
++Версія 1.10 виправляє чотири помилки, знайдені рецензією, і ще дві близькі до них, які виявились під час виправлення. Кожну рецензійну помилку відтворює окремий тест (`tests/test_review_110.py`); ML-ядро перенавчено, перевірки на реальних датчиках перераховано.
++
++| № | Помилка | Серйозність | Звідки взялась |
++|---|---|---|---|
++| 1 | Норма поливу не враховує інфільтрацію при дощуванні; втрати пояснювались дощем, якого не було | критична (дощування, повільно-проникні ґрунти) | розрахунок інфільтрації з 1.2 не був зв'язаний з розрахунком норми з 1.0; мітка «дощ» — з 1.0 |
++| 2 | Локальне донавчання вчилось на зволоженні від поливу | критична (поля, що поливаються) | DS-гілка, 1.6 |
++| 3 | Датчики різної глибини зливались в один ряд | серйозна (кілька датчиків) | DS-гілка, 1.6 |
++| 4 | Профілі 0–30 і 0–55 см нормалізувались по-різному в навчанні й у застосунку | методологічна, середня | DS-гілка, 1.6 (навчання ядра) і DS-1.3 (Етап 3) |
++| 5 | Реаналіз «не бачить» поливу, але використовувався для поливаного поля без датчика | критична (поливане поле без датчика) | DS-гілка, 1.7; знайдено під час виправлення п. 2 |
++| 6 | Прокрутка старого показу ігнорувала полив, зроблений після нього | серйозна | DS-гілка, 1.7; знайдено під час виправлення п. 2 |
++
++---
++
++## 1. Норма поливу і інфільтрація
++
++### Що було
++Фізика 1.2 знає, що при дощуванні з інтенсивністю I вищою за Ksat у ґрунт вбирається лише частка Ksat / I. Але норму рахував окремий блок `decision.py`, який дивився тільки на дефіцит і ефективність способу поливу. У прикладі рецензента (I = 20 мм/год, Ksat = 2 мм/год) система радила 20 мм нетто, хоча її ж баланс показував ≈ 2 мм води в ґрунті. Перевірка втрат бачила стік і зменшувала норму, але пояснювала це причиною `reduced_for_rain` — «очікуваний дощ», хоча опадів не було.
++
++### Що стало
++- **Полив циклами «полив — пауза» (cycle & soak).** Нова функція `decision.infiltration_plan()` використовує модель, узгоджену з балансом 1.2:
++  - під час поливу ґрунт вбирає Ksat мм/год, а надлишок (I − Ksat) тримається на поверхні до ємності западин S;
++  - тривалість циклу t_on = S / (I − Ksat); за цикл подається I·t_on мм, і вся ця вода вбирається;
++  - пауза t_soak = S / Ksat — за цей час вбирається вода з поверхні;
++  - циклів n = ⌈брутто / (I·t_on)⌉, не більше 8 на добу.
++
++  Для прикладу рецензента (S = 3 мм): цикли по 10 хв з паузами по 90 хв, за цикл 3.3 мм. Безперервно вбиралось би лише 10%.
++- **Якщо циклів забагато** (повільний ґрунт, велика норма), система дає за добу стільки, скільки вбереться за 8 циклів, а решту — наступного поливу. Причина `infiltration_limited` з порадою зменшити інтенсивність.
++- **Розрахунок норми і перевірка втрат узгоджені.** Прогін балансу для запланованого поливу моделює саме цикли (новий аргумент `engine.run(..., irr_infil=…)`), тож уся вода вбирається, і нетто дорівнює брутто × ефективність способу. Тест перевіряє цю рівність з точністю до 1 мм.
++- **Причину втрат названо правильно:** `reduced_for_rain`, лише якщо за 48 год справді очікується ≥ 1 мм опадів; інакше `reduced_for_drainage` («частина води пішла б глибше за корені»).
++- **Історія поливів узгоджена з порадою.** `log_irrigation(..., cycles=None|True|False)`: якщо остання рекомендація (≤ 36 год) радила цикли, вважається, що полив зробили циклами. При відтворенні історії такий полив вбирається повністю, а безперервний — у частці Ksat / I, як у 1.2. HTTP: поле `cycles` у `POST /fields/{id}/irrigation`.
++- **Відповідь:** `amount.cycles` (`cycles`, `on_min`, `soak_min`, `per_cycle_mm`, `total_h`, `continuous_infiltration`). `duration_min` — чистий час поливу; загальний час разом із паузами — `cycles.total_h`. У заголовку: «…, 8 циклами з паузами». В інтерфейсі — окрема плитка.
++- **Новий параметр експерта** `surface_storage_mm` (S, типово 3 мм, межі 0.5–15).
++
++**Обмеження моделі циклів:** стала Ksat і поверхнева ємність — це спрощення: насправді вбирання на початку поливу швидше, а ємність западин залежить від поверхні. Модель свідомо узгоджена з тим, як рахує баланс 1.2, щоб норма і прогін не суперечили одне одному.
++
++**Де:** `hydrobrain/decision.py` (`infiltration_plan`, блок норми, пороги `surface_storage_mm`, `max_cycles`), `hydrobrain/balance.py` (`infiltration_fraction()`, `run(..., irr_infil=)`), `hydrobrain/brain.py` (`log_irrigation`, відтворення історії), `hydrobrain/explain.py`, `hydrobrain/params.py`, `server.py`, `ui/index.html`.
++
++---
++
++## 2. Локальне донавчання вчилось на поливі
++
++### Що було
++`_local_rows()` рахувала мітку як різницю показів через 24/48 год і не дивилась у журнал поливів. На полі, яке поливають, зволоження від поливу потрапляло в ціль «природної зміни», і модель вчилась, що ґрунт сам зволожується. Перевірка «вмикати лише при покращенні» від цього не захищала, бо відкладені дані були забруднені так само.
++
++### Що стало
++- **Інтервали з поливом виключаються з навчання.** Якщо в (t − 2 год, t + 24·h + 2 год] записано полив, приклад не потрапляє ні в навчання, ні в перевірку.
++- **Ознаки «зміна за 1 / 3 доби» не подаються** (NaN), якщо за цей час був полив — і під час прогнозу, і в журналі для донавчання. Модель навчена на природних змінах, і полив у минулій зміні вона сприймала б як дощ.
++- Обрано **виключення, а не віднімання** оціненого фізикою внеску поливу: віднімання перенесло б похибки фізики (інфільтрація, розподіл по профілю) в мітки. Ціна — менше прикладів на полі, яке часто поливають; поріг 60 діб тепер рахується лише за «чистими» інтервалами.
++
++**Де:** `hydrobrain/brain.py` (`_local_rows`, `_state_context`), `hydrobrain/ml_forecast.py` (`irrigated_between`).
++
++---
++
++## 3. Датчики різної глибини
++
++### Що було
++`_sensor_readings()` відкидала глибину й ідентифікатор датчика. Покази на 20 і 60 см ставали одним рядом, з якого рахувались масштаб, ознаки змін, мітки донавчання і прокрутка старого показу. Для одночасних показів 0.20 і 0.40 «найближчим» повертався 0.20. Фільтр Калмана (1.2) при цьому порівнював кожен датчик зі своїм шаром правильно — помилка стосувалась лише ML і калібрування ґрунту.
++
++### Що стало
++- **Один узгоджений профіль кореневої зони** (`ml_forecast.build_profile`):
++  - беруться датчики до глибини коренів + 10 см (якщо таких немає — найменш глибокий);
++  - для кожного моменту рахується середнє, зважене за товщиною шарів (межі — посередині між сусідніми глибинами, низ — глибина коренів);
++  - покази інших глибин шукаються в межах ±3 год; моменти, де бракує якоїсь глибини, пропускаються.
++
++  Так само зважувались датчики станцій ISMN в Етапі 3.
++- **Профіль використовується скрізь, де раніше був змішаний ряд:** масштаб, ознаки змін, мітки донавчання, прокрутка старого показу, калібрування θFC/θWP.
++- **Глибина коренів записується в журнал донавчання** (`zr`), і мітки рахуються з профілю тієї ж глибини, що й ознаки, — корені за сезон ростуть.
++- Приклад рецензента: 0.20 на 20 см і 0.40 на 40 см при коренях 0.6 м дають профіль 0.30 (ваги по 0.5), а не 0.20.
++
++**Де:** `hydrobrain/ml_forecast.py` (`profile_weights`, `build_profile`), `hydrobrain/brain.py` (`_sensor_series`, `_sensor_readings`, `_root_depth`, `_local_rows`, журнал `ml_log`).
++
++---
++
++## 4. Нормалізація профілів 0–30 і 0–55 см
++
++### Що було
++Під час навчання ядра (і моделі «ML з України» в Етапі 3) профілі 0–30 і 0–55 см рахувались як зважене середнє **вже нормалізованих** шарів ERA5-Land. У застосунку (реаналіз у точці, датчики) і в даних Етапу 3 — спершу **середня вологість у м³/м³**, потім нормалізація. Це різні величини, тож переведення прогнозу у вологість одним множником не мало узгодженого змісту. Шари 0–7 і 0–100 см були узгоджені й не змінювались.
++
++### Що стало
++- **Скрізь спершу агрегування в м³/м³, потім нормалізація** — за 1-м і 99-м перцентилями сезонних годин років навчання, так само, як для решти шарів (`ds/stage2/data_io.py`: `PROFILE_MIX`, `profile_theta`, `layer_profiles`). Тест перевіряє формулу і показує, що стара величина відрізнялась (на синтетичному прикладі — більш ніж на 0.05 відносних одиниць).
++- **ML-ядро перенавчено:** `hydrobrain/models/ml_core_v2.joblib` (+ `.json`), версія `ml_core_v2`; файли v1 видалено. Моделі 0–7 і 0–100 см за якістю не змінились.
++- **Якість ядра (ERA5-Land, 2024–2025, справжній прогноз погоди, відносні одиниці)** — тепер в узгодженому масштабі:
++
++  | Шар | MAE 24 год v1 → v2 | Персистентність v2 | MAE 48 год v1 → v2 |
++  |---|---|---|---|
++  | 0–30 см | 0.011 → 0.012 | 0.026 | 0.020 → 0.021 |
++  | 0–55 см | 0.007 → 0.008 | 0.017 | 0.012 → 0.014 |
++
++  Числа v1 і v2 не цілком порівнянні: змінилась сама шкала цілі. Відношення до персистентності (~0.46) лишилось таким самим.
++
++---
++
++## 5–6. Реаналіз і прокрутка не знали про полив (знайдено під час виправлень)
++
++Виправляючи п. 2, я побачила ту саму ваду в режимах оцінки стану з 1.7:
++- **Поле без датчика:** ERA5-Land описує богарне поле. Якщо поле поливали, «слабкий вимір» з реаналізу тягнув би оцінку стану до сухого, і система радила б полити знову. **Тепер:** якщо за останні 30 діб записано поливи, реаналіз не використовується; стан веде фізика із записаними поливами (режим `model_only`, рекомендація орієнтовна), з поясненням у панелі.
++- **Старий показ датчика:** прокрутка ML — це природна динаміка, тож полив після показу вона не враховувала. **Тепер:** якщо після останнього показу був полив, прокрутка не подається у фільтр; стан веде фізика з фільтром Калмана, з поясненням (`forecast_core.state_note`).
++
++---
++
++## Перерахунок результатів (Етап 3, реальні датчики ISMN)
++
++Перевірки перераховано з перенавченою моделлю «ML з України» (узгоджена нормалізація профілів) і новим ядром.
++
++**MAE, % об., 1 доба:**
++
++| Модель | 0–30 см, 1.9 → 1.10 | 0–55 см, 1.9 → 1.10 |
++|---|---|---|
++| Персистентність | 0.541 | 0.390 |
++| Фізика + калібрування | 0.420 | 0.300 |
++| ML з України (без донавчання) | 0.447 → **0.465** (R² 0.06 → −0.02) | 0.283 → **0.295** (R² 0.32 → 0.26) |
++| ML з України + локальна поправка | 0.365 → 0.362 | 0.248 → 0.247 |
++| ML на датчиках цього місця | 0.354 | 0.249 |
++| Гібрид на каліброваній фізиці | 0.352 | 0.255 |
++
++**Режим без датчика (точність «сухо/волого», 0–30 / 0–55 см):** ERA5-Land + ML — 0.766 / 0.746 (у 1.9: 0.766 / 0.748); фізика без датчика — 0.688 / 0.663; показ 7 діб тому + ML — 0.869 / 0.888; 3 доби — 0.917 / 0.941. Практично без змін.
++
++**Крива «нове поле» (MAE, % об., 1 доба; модель «ML з України» з масштабом від датчика; середнє за 12 вікнами):**
++
++| Діб даних датчика | 7 | 14 | 30 | 60 | 120 | 240 |
++|---|---|---|---|---|---|---|
++| 0–30 см, 1.9 | 0.460 | 0.439 | 0.395 | 0.377 | 0.388 | 0.390 |
++| 0–30 см, **1.10** | 0.456 | 0.436 | 0.394 | 0.380 | 0.396 | 0.398 |
++| 0–55 см, 1.9 | 0.348 | 0.342 | 0.316 | 0.290 | 0.280 | 0.281 |
++| 0–55 см, **1.10** | 0.341 | 0.335 | 0.308 | 0.283 | 0.280 | 0.282 |
++| Персистентність (0–30 / 0–55) | 0.540 / 0.391 | | | | | |
++
++Криві в 1.10 вперше пораховано і з фізикою 1.2 (до цього — з фізикою 1.1); фізика з калібруванням з вікна, як і раніше, гірша за персистентність навіть за 240 діб (0–55 см: 0.454). На новому полі ML з України з масштабом від датчика краща за персистентність уже з 7 діб: −16% (0–30) і −13% (0–55).
++
++**Що це означає — чесно:**
++- Узгоджена нормалізація трохи **погіршила** перенесення «ML з України» без донавчання на реальні датчики (0–30 см: 0.447 → 0.465; 0–55 см: 0.283 → 0.295). Попередні, трохи кращі числа частково були артефактом неузгодженого масштабу. Це правильна ціна виправлення.
++- На 0–30 см ML з України без донавчання тепер **на рівні персистентності** (R² ≈ 0) і гірша за калібровану фізику. На 0–55 см вона й далі краща за персистентність на 24%.
++- Донавчена модель (так працює застосунок після ~60 діб даних) не змінилась і лишається найкращою разом із локальними моделями.
++- Висновки для архітектури й варіанта «Г» не змінюються.
++
++---
++
++## Нові та змінені поля API
++
++| Поле | Значення |
++|---|---|
++| `amount.cycles` | план циклів (див. п. 1); є лише коли інтенсивність дощування > Ksat |
++| `amount.duration_min` | за циклів — чистий час поливу без пауз |
++| причини `infiltration_cycles`, `infiltration_limited`, `reduced_for_drainage` | нові |
++| `POST /fields/{id}/irrigation` → `cycles` | необов'язково: чи поливали циклами |
++| `forecast_core.state_note` | чому стан веде фізика |
++| параметр `surface_storage_mm` | режим експерта |
++| журнал `ml_log` → `zr` | глибина коренів у момент прогнозу |
++
++Усі поля 1.9 на місці. Поля, збережені у 1.9, відкриваються; їхній журнал донавчання без `zr` використовує поточну глибину коренів.
++
++---
++
++## Як перевірено
++
++- **73 автотести** проходять (у 1.9 — 65). Нові — `tests/test_review_110.py` (8):
++  - формула циклів;
++  - приклад рецензента з дощуванням: цикли, нетто = брутто × ефективність, немає «дощу» без дощу, цикли в заголовку;
++  - запис поливу за порадою з циклами;
++  - виключення інтервалів з поливом із донавчання (24 і 48 год);
++  - маскування ознак змін після поливу;
++  - профіль із датчиків 20 і 40 см = 0.30, датчик глибше коренів не враховується;
++  - нормалізація «спершу агрегування»;
++  - версія ядра v2.
++- **Перераховано:** навчання ядра, дані «ML з України» для Етапу 3, Етап 3, режим без датчика, обидві криві «нове поле».
++- JavaScript інтерфейсу перевірено на синтаксис.
++
++## Що лишилось
++
++- Модель циклів спрощена (стала Ksat, стала ємність западин); у польових умовах її варто звірити з реальним стоком.
++- На полі, яке поливають щодня, «чистих» інтервалів для донавчання буде мало — 60 діб можуть набиратись довше за сезон.
++- Обмеження з попередніх файлів змін (реальні датчики — лише ліс у Франції; немає вимірювань з українських полів; бектест не виконано) лишаються в силі.

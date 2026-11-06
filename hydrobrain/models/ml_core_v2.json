@@ -1,0 +1,135 @@
+{
+ "version": "ml_core_v2",
+ "sklearn_version": "1.8.0",
+ "trained_on": "ERA5-Land, 14 точок України, 2016–2025",
+ "features": {
+  "1": [
+   "w",
+   "dw1",
+   "dw3",
+   "P_past1",
+   "P_past3",
+   "P_past7",
+   "ET0_past1",
+   "ET0_past3",
+   "ET0_past7",
+   "T_past3",
+   "doy_sin",
+   "doy_cos",
+   "P_1",
+   "ET0_1",
+   "Tmax_1",
+   "RH_1",
+   "SW_1",
+   "U_1",
+   "P_h",
+   "ET0_h"
+  ],
+  "2": [
+   "w",
+   "dw1",
+   "dw3",
+   "P_past1",
+   "P_past3",
+   "P_past7",
+   "ET0_past1",
+   "ET0_past3",
+   "ET0_past7",
+   "T_past3",
+   "doy_sin",
+   "doy_cos",
+   "P_1",
+   "ET0_1",
+   "Tmax_1",
+   "RH_1",
+   "SW_1",
+   "U_1",
+   "P_2",
+   "ET0_2",
+   "Tmax_2",
+   "RH_2",
+   "SW_2",
+   "U_2",
+   "P_h",
+   "ET0_h"
+  ]
+ },
+ "targets": {
+  "T1": {
+   "depth_cm": [
+    0,
+    7
+   ]
+  },
+  "T2": {
+   "depth_cm": [
+    0,
+    30
+   ]
+  },
+  "T3": {
+   "depth_cm": [
+    0,
+    55
+   ]
+  },
+  "RZ": {
+   "depth_cm": [
+    0,
+    100
+   ]
+  }
+ },
+ "quality_forecast_2024_2025": {
+  "T1_h1": {
+   "mae_rel": 0.027805329559732854,
+   "sigma_rel": 0.06439707661348211,
+   "persistence_mae_rel": 0.057438205165666736,
+   "n_test": 6384
+  },
+  "T1_h2": {
+   "mae_rel": 0.04348883071828672,
+   "sigma_rel": 0.08393950298013589,
+   "persistence_mae_rel": 0.090223654690976,
+   "n_test": 6356
+  },
+  "T2_h1": {
+   "mae_rel": 0.012235142206502434,
+   "sigma_rel": 0.03102117483959924,
+   "persistence_mae_rel": 0.02585707296530929,
+   "n_test": 6384
+  },
+  "T2_h2": {
+   "mae_rel": 0.02121567496259394,
+   "sigma_rel": 0.044686824024631054,
+   "persistence_mae_rel": 0.04507988922856493,
+   "n_test": 6356
+  },
+  "T3_h1": {
+   "mae_rel": 0.007863094242489252,
+   "sigma_rel": 0.0194999116713113,
+   "persistence_mae_rel": 0.017007866246942078,
+   "n_test": 6384
+  },
+  "T3_h2": {
+   "mae_rel": 0.013657966276195215,
+   "sigma_rel": 0.028252304919508548,
+   "persistence_mae_rel": 0.029884734817778563,
+   "n_test": 6356
+  },
+  "RZ_h1": {
+   "mae_rel": 0.004995029127526404,
+   "sigma_rel": 0.01152836453818306,
+   "persistence_mae_rel": 0.011125300360441978,
+   "n_test": 6384
+  },
+  "RZ_h2": {
+   "mae_rel": 0.0085011949180393,
+   "sigma_rel": 0.017047446182440765,
+   "persistence_mae_rel": 0.019823315823632972,
+   "n_test": 6356
+  }
+ },
+ "units": "відносні: Δw = Δθ / (θ_high − θ_low)",
+ "note": "Якість оцінена на ERA5-Land із справжнім прогнозом погоди; на реальних датчиках похибка більша (Етап 3)."
+}

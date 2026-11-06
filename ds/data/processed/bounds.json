@@ -1,0 +1,272 @@
+{
+ "kherson": {
+  "theta_rz": [
+   0.16754,
+   0.34845000000000004
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.143,
+   0.409
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.154,
+   0.395
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.171,
+   0.338
+  ]
+ },
+ "mykolaiv": {
+  "theta_rz": [
+   0.1556052,
+   0.33546590000000015
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.138,
+   0.408
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.151,
+   0.386
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.156,
+   0.335
+  ]
+ },
+ "odesa": {
+  "theta_rz": [
+   0.15237,
+   0.3438
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.14,
+   0.406
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.151,
+   0.384
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.153,
+   0.34
+  ]
+ },
+ "zaporizhzhia": {
+  "theta_rz": [
+   0.15578,
+   0.35037850000000015
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.137,
+   0.4
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.151,
+   0.383
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.157,
+   0.341
+  ]
+ },
+ "dnipro": {
+  "theta_rz": [
+   0.15736,
+   0.38115
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.136,
+   0.417
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.151,
+   0.407
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.16,
+   0.38
+  ]
+ },
+ "kropyvnytskyi": {
+  "theta_rz": [
+   0.15839,
+   0.38569
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.14,
+   0.409
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.151,
+   0.393
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.16,
+   0.388
+  ]
+ },
+ "poltava": {
+  "theta_rz": [
+   0.16475,
+   0.39554
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.14,
+   0.409
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.152,
+   0.4
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.168,
+   0.399
+  ]
+ },
+ "kharkiv": {
+  "theta_rz": [
+   0.21677999999999997,
+   0.4364737
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.195,
+   0.451
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.213,
+   0.445
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.219,
+   0.442
+  ]
+ },
+ "cherkasy": {
+  "theta_rz": [
+   0.19546999999999998,
+   0.39287770000000055
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.149,
+   0.411
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.165,
+   0.4
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.206,
+   0.397
+  ]
+ },
+ "vinnytsia": {
+  "theta_rz": [
+   0.22368,
+   0.39144
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.153,
+   0.416
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.191,
+   0.402
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.236,
+   0.392
+  ]
+ },
+ "kyiv": {
+  "theta_rz": [
+   0.27762,
+   0.44721
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.228,
+   0.465
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.249,
+   0.459
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.287,
+   0.452
+  ]
+ },
+ "zhytomyr": {
+  "theta_rz": [
+   0.18467999999999998,
+   0.39216850000000014
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.145,
+   0.412
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.159,
+   0.4
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.188,
+   0.393
+  ]
+ },
+ "ternopil": {
+  "theta_rz": [
+   0.18061,
+   0.39308110000000007
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.156,
+   0.419
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.164,
+   0.406
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.18,
+   0.395
+  ]
+ },
+ "sumy": {
+  "theta_rz": [
+   0.1767641,
+   0.3947196000000002
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.141,
+   0.419
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.153,
+   0.413
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.183,
+   0.397
+  ]
+ },
+ "fr_aqui_fraye": {
+  "theta_rz": [
+   0.11763049999999999,
+   0.2478855
+  ],
+  "soil_moisture_0_to_7cm": [
+   0.059,
+   0.305
+  ],
+  "soil_moisture_7_to_28cm": [
+   0.083,
+   0.281
+  ],
+  "soil_moisture_28_to_100cm": [
+   0.125,
+   0.252
+  ]
+ }
+}

@@ -1,0 +1,56 @@
+{
+ "params_h1": {
+  "ml_only": {
+   "max_iter": 600,
+   "max_leaf_nodes": 31,
+   "loss": "absolute_error"
+  },
+  "ml_physfeat": {
+   "max_iter": 600,
+   "max_leaf_nodes": 15,
+   "loss": "absolute_error"
+  },
+  "hybrid": {
+   "max_iter": 600,
+   "max_leaf_nodes": 31,
+   "loss": "absolute_error"
+  }
+ },
+ "physics_cal_pooled_h1": [
+  0.7412966161023675,
+  0.002566136786818269
+ ],
+ "hybrid_q10_q90_coverage_h1": 0.7087752131420254,
+ "monotonicity_violations_h1": {
+  "ml_only": 0.0,
+  "ml_physfeat": 0.020586400499064253,
+  "hybrid": 0.6566853815762113
+ },
+ "params_h2": {
+  "ml_only": {
+   "max_iter": 600,
+   "max_leaf_nodes": 15,
+   "loss": "absolute_error"
+  },
+  "ml_physfeat": {
+   "max_iter": 600,
+   "max_leaf_nodes": 31,
+   "loss": "absolute_error"
+  },
+  "hybrid": {
+   "max_iter": 600,
+   "max_leaf_nodes": 31,
+   "loss": "absolute_error"
+  }
+ },
+ "physics_cal_pooled_h2": [
+  0.7439848149252255,
+  0.004843014638292839
+ ],
+ "hybrid_q10_q90_coverage_h2": 0.6704096485755875,
+ "monotonicity_violations_h2": {
+  "ml_only": 0.0,
+  "ml_physfeat": 0.003535038469536286,
+  "hybrid": 0.4595550010397172
+ }
+}

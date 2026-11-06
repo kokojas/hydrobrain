@@ -1,0 +1,13 @@
+numpy>=1.24
+requests>=2.28
+tzdata>=2024.1        # часовий пояс Europe/Kyiv на Windows
+# необов'язково:
+tifffile>=2023.1      # SoilGrids через WCS (поки REST ISRIC призупинено)
+fastapi>=0.110        # HTTP-обгортка server.py
+uvicorn>=0.27
+scikit-learn==1.8.0     # ML-ядро прогнозу (моделі навчено на 1.8) і локальне донавчання; без нього — лише фізика
+joblib>=1.3           # завантаження ML-моделей
+pandas>=2.0
+pytest>=7             # автотести
+
+httpx>=0.28,<0.29     # HTTP-тести FastAPI

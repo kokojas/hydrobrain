@@ -1,0 +1,16 @@
+{
+  "mode": "beginner",
+  "name": "Город біля Вінниці",
+  "inputs": {
+    "lat": 49.2331,
+    "lon": 28.4682,
+    "crop": "tomato",
+    "sowing_date": "2026-05-10",
+    "irrigation_method": "drip",
+    "soil_type_ua": "auto",
+    "mulch_type": "organic",
+    "area_m2": 600,
+    "flow_rate_m3_h": 1.2,
+    "sensor_depth_cm": 20
+  }
+}

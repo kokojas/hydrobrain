@@ -1,0 +1,50 @@
+{
+ "physics_cal_T1_h1": {
+  "slope": 0.18597479891884433,
+  "intercept": 0.007524488276610616
+ },
+ "phys_th_soilcal_lin_T1_h1": {
+  "slope": 0.1359562023826135,
+  "intercept": 0.02496044518965691
+ },
+ "physics_cal_T1_h2": {
+  "slope": 0.22466070056798357,
+  "intercept": 0.013375833895410983
+ },
+ "phys_th_soilcal_lin_T1_h2": {
+  "slope": 0.21804014604962407,
+  "intercept": 0.05148120973681154
+ },
+ "physics_cal_T2_h1": {
+  "slope": 0.20219667375158354,
+  "intercept": 0.001705431213594158
+ },
+ "phys_th_soilcal_lin_T2_h1": {
+  "slope": 0.07959928176487527,
+  "intercept": 0.005535817683739546
+ },
+ "physics_cal_T2_h2": {
+  "slope": 0.24315437992411493,
+  "intercept": 0.0035574323501768547
+ },
+ "phys_th_soilcal_lin_T2_h2": {
+  "slope": 0.16519831111808606,
+  "intercept": 0.01637852376442665
+ },
+ "physics_cal_T3_h1": {
+  "slope": 0.25937029804697176,
+  "intercept": 0.0005101441446715212
+ },
+ "phys_th_soilcal_lin_T3_h1": {
+  "slope": 0.05151682292118659,
+  "intercept": 0.0014058726700734462
+ },
+ "physics_cal_T3_h2": {
+  "slope": 0.31267807272910336,
+  "intercept": 0.0009575572860921653
+ },
+ "phys_th_soilcal_lin_T3_h2": {
+  "slope": 0.12475822442740932,
+  "intercept": 0.006814547109608063
+ }
+}
