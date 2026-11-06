@@ -11,6 +11,7 @@
 </script>
 <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <script src="vendor/leaflet/leaflet.js"></script>
+<script src="session.js?v=1"></script>
 <style>
 /* ---------- шрифти (локально, працюють без інтернету) ---------- */
 @font-face{font-family:"Alegreya";font-style:normal;font-weight:400;font-display:swap;src:url(vendor/fonts/alegreya-cyrillic-400-normal.woff2) format("woff2");unicode-range:U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116}
@@ -323,6 +324,7 @@ details.tech summary{cursor:pointer;color:var(--muted);font-size:14px}
   <aside class="panel">
     <div class="side-head"><h2>Мої поля</h2>
       <button class="primary" style="white-space:nowrap" onclick="showNew()">+ Нове поле</button></div>
+    <p class="hint">Ваші поля зберігаються для цього браузера.</p>
     <ul class="fieldlist" id="fields"></ul>
     <div class="empty muted" id="noFields"><svg><use href="#i-sprout"/></svg><span>Тут з'являться ваші поля й грядки. Додайте перше — це хвилина.</span></div>
   </aside>
@@ -451,10 +453,15 @@ function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("show");cl
 // GitHub Pages uses the hosted API; the backend-hosted UI uses the same origin.
 const ON_PAGES = location.hostname.endsWith(".github.io");
 const API = ON_PAGES ? "https://arlikfolkovic.pythonanywhere.com" : (location.protocol === "file:" ? "http://localhost:8000" : "");
+const sessionToken = window.createHydroSession(API);
 
 async function api(path, opt={}){
+  const token = await sessionToken();
+  const headers = new Headers(opt.headers);
+  headers.set("Content-Type", "application/json");
+  headers.set("Authorization", "Bearer " + token);
   let r;
-  try{ r = await fetch(API + path, {headers:{"Content-Type":"application/json"}, ...opt}); }
+  try{ r = await fetch(API + path, {...opt, headers, cache:"no-store"}); }
   catch(e){ serverDown(); throw new Error("сервер HydroBrain не відповідає"); }
   let body; try{ body = await r.json(); }catch(e){ body = null; }
   if(!r.ok) throw new Error((body && body.detail) ? (typeof body.detail==="string"?body.detail:JSON.stringify(body.detail)) : ("HTTP "+r.status));

@@ -165,6 +165,8 @@ def test_http_contract_and_offline_flow(tmp_path, monkeypatch):
     with TestClient(server.app) as client:
         assert client.get("/").status_code == 200
         assert client.get("/vendor/leaflet/leaflet.js").status_code == 200
+        token = client.post("/sessions").json()["token"]
+        client.headers["Authorization"] = "Bearer " + token
         assert client.get("/schema/typo").status_code == 400
         for route in ("sensor", "irrigation", "fertilizer"):
             body = {"sensor": {"theta": 0.3}, "irrigation": {"amount_mm": 20},

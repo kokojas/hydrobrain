@@ -16,18 +16,21 @@ HTTP-обгортка «мозку» для підключення до вже �
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from typing import Any, Optional
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 from hydrobrain import HydroBrain, __version__
+from hydrobrain.sessions import SessionStore
 
 DATA_DIR = os.environ.get("HYDRO_DATA", "hydro_data")
 OFFLINE = os.environ.get("HYDRO_OFFLINE") == "1"
@@ -37,6 +40,52 @@ app = FastAPI(title="HydroBrain — мозок поливу", version=__version_
 app.mount("/vendor", StaticFiles(directory=str(UI.parent / "vendor")), name="vendor")   # Leaflet локально
 # дозволяє відкривати ui/index.html і як файл (file://), і з іншого порту/інтерфейсу
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+bearer = HTTPBearer(auto_error=False)
+
+
+@lru_cache(maxsize=4)
+def _session_store(data_dir):
+    return SessionStore(data_dir)
+
+
+def session_store():
+    return _session_store(str(Path(brain.data_dir).resolve()))
+
+
+def require_session(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer)):
+    owner = session_store().authenticate(credentials.credentials) if credentials else None
+    if owner is None:
+        raise HTTPException(401, "Не вдалося підтвердити сесію браузера. Оновіть сторінку.",
+                            headers={"WWW-Authenticate": "Bearer"})
+    return owner
+
+
+def owned_field(fid: str, owner: str = Depends(require_session)):
+    # Unknown IDs and another visitor's IDs have the same response.
+    if not session_store().owns(fid, owner):
+        raise HTTPException(404, "Поле не знайдено")
+    return fid
+
+
+@app.middleware("http")
+async def private_responses(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith(("/fields", "/sessions")):
+        response.headers["Cache-Control"] = "private, no-store"
+        vary = response.headers.get("Vary", "")
+        response.headers["Vary"] = ", ".join(filter(None, (vary, "Authorization")))
+    return response
+
+
+@app.post("/sessions")
+def create_session():
+    return {"token": session_store().create(), "token_type": "Bearer"}
+
+
+@app.get("/sessions/current")
+def current_session(owner: str = Depends(require_session)):
+    return {"ok": True}
 
 
 @app.exception_handler(FileNotFoundError)
@@ -95,31 +144,33 @@ def catalog():
 
 
 @app.post("/fields")
-def create_field(body: FieldIn):
+def create_field(body: FieldIn, owner: str = Depends(require_session)):
     try:
-        return brain.create_field(body.inputs, mode=body.mode, name=body.name)
+        field = brain.create_field(body.inputs, mode=body.mode, name=body.name)
+        session_store().claim_field(field["field_id"], owner)
+        return field
     except ValueError as e:
         raise HTTPException(400, str(e))
 
 
 @app.patch("/fields/{fid}")
-def update_field(fid: str, overrides: dict[str, Any], mode: Optional[str] = None):
+def update_field(overrides: dict[str, Any], fid: str = Depends(owned_field), mode: Optional[str] = None):
     return brain.update_params(fid, overrides, mode)
 
 
 @app.get("/fields")
-def list_fields():
-    return brain.list_fields()
+def list_fields(owner: str = Depends(require_session)):
+    return session_store().fields(owner)
 
 
 @app.post("/fields/{fid}/sensor")
-def add_sensor(fid: str, body: SensorIn):
+def add_sensor(body: SensorIn, fid: str = Depends(owned_field)):
     brain.add_sensor_reading(fid, body.theta, body.depth_cm, body.time, body.sensor_id)
     return {"ok": True}
 
 
 @app.post("/fields/{fid}/irrigation")
-def add_irrigation(fid: str, body: IrrigationIn):
+def add_irrigation(body: IrrigationIn, fid: str = Depends(owned_field)):
     try:
         return brain.log_irrigation(fid, body.amount_mm, body.time, body.recommended_mm, body.volume_m3, body.note,
                                     body.cycles)
@@ -128,7 +179,7 @@ def add_irrigation(fid: str, body: IrrigationIn):
 
 
 @app.post("/fields/{fid}/calibrate_soil")
-def calibrate_soil(fid: str):
+def calibrate_soil(fid: str = Depends(owned_field)):
     """Калібрує θFC/θWP за накопиченими показами датчика (hydrobrain/soil_calibration.py)."""
     try:
         with brain.lock(fid):
@@ -138,7 +189,7 @@ def calibrate_soil(fid: str):
 
 
 @app.post("/fields/{fid}/finetune_local")
-def finetune_local(fid: str):
+def finetune_local(fid: str = Depends(owned_field)):
     """Локальне донавчання ML-ядра на даних цього поля (після ~сезону спостережень)."""
     try:
         with brain.lock(fid):
@@ -148,7 +199,7 @@ def finetune_local(fid: str):
 
 
 @app.post("/fields/{fid}/fertilizer")
-def add_fert(fid: str, body: FertIn):
+def add_fert(body: FertIn, fid: str = Depends(owned_field)):
     brain.add_fertilizer(fid, body.dose_kg_ha, body.fert_type, body.time)
     return {"ok": True}
 
@@ -156,11 +207,17 @@ def add_fert(fid: str, body: FertIn):
 @app.get("/", include_in_schema=False)
 def ui():
     """Простий веб-інтерфейс (ui/index.html) — працює поверх цих самих ендпоінтів."""
-    return FileResponse(UI)
+    return FileResponse(UI, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/session.js", include_in_schema=False)
+def session_script():
+    return FileResponse(UI.parent / "session.js", media_type="application/javascript",
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/fields/{fid}/info")
-def field_info(fid: str):
+def field_info(fid: str = Depends(owned_field)):
     """Коротка інформація про поле для інтерфейсу (лише читання)."""
     try:
         f = brain.load_field(fid)
@@ -177,9 +234,9 @@ def field_info(fid: str):
 
 
 @app.get("/fields_detailed")
-def list_fields_detailed():
+def list_fields_detailed(owner: str = Depends(require_session)):
     out = []
-    for fid in brain.list_fields():
+    for fid in session_store().fields(owner):
         try:
             f = brain.load_field(fid)
             out.append(dict(field_id=fid, name=f.get("name"), crop=f["params"].get("crop"),
@@ -207,7 +264,7 @@ def _recommend(fid):
 
 
 @app.post("/fields/{fid}/recommendation")
-def recommend_post(fid: str):
+def recommend_post(fid: str = Depends(owned_field)):
     """Рекомендація (v1.2, правильний метод): запит змінює збережений стан поля, тому це POST."""
     try:
         return _recommend(fid)
@@ -220,7 +277,7 @@ def recommend_post(fid: str):
 
 
 @app.get("/fields/{fid}/recommendation", deprecated=True)
-def recommend(fid: str):
+def recommend(fid: str = Depends(owned_field)):
     """Залишено для сумісності з інтерфейсом версій ≤ 1.1; новий код має використовувати POST."""
     try:
         return _recommend(fid)
